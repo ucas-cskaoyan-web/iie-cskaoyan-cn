@@ -17,7 +17,10 @@ use crate::{
             create_article, delete_article, get_article, list_admin_articles, list_articles,
             unlock_article, update_article,
         },
-        categories::{create_category, list_categories, update_category},
+        categories::{
+            create_category, delete_category, list_admin_categories, list_categories,
+            update_category,
+        },
         comments::{create_comment, delete_admin_comment, list_admin_comments, list_comments},
         github::{github_callback, github_me, start_github_login},
         reports::{
@@ -73,8 +76,14 @@ pub(crate) fn build(state: AppState) -> Router {
             "/api/v1/admin/articles/{article_id}/comments/{comment_id}",
             delete(delete_admin_comment),
         )
-        .route("/api/v1/admin/categories", post(create_category))
-        .route("/api/v1/admin/categories/{slug}", patch(update_category))
+        .route(
+            "/api/v1/admin/categories",
+            get(list_admin_categories).post(create_category),
+        )
+        .route(
+            "/api/v1/admin/categories/{slug}",
+            patch(update_category).delete(delete_category),
+        )
         .route(
             "/api/v1/admin/stats",
             get(list_admin_stats).post(upsert_stat),

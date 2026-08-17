@@ -60,6 +60,7 @@ pub(crate) struct ArticleCategory {
     pub(crate) slug: String,
     pub(crate) name: String,
     pub(crate) sort_order: i32,
+    pub(crate) is_hidden: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +68,8 @@ pub(crate) struct ArticleCategoryInput {
     pub(crate) slug: String,
     pub(crate) name: String,
     pub(crate) sort_order: i32,
+    #[serde(default)]
+    pub(crate) is_hidden: bool,
 }
 
 #[derive(Debug, Deserialize)]

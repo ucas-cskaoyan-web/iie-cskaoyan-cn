@@ -1,0 +1,2 @@
+ALTER TABLE article_categories
+    ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT false;

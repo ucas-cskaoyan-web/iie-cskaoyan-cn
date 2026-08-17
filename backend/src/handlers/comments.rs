@@ -55,8 +55,9 @@ pub(crate) async fn list_comments(
         "SELECT c.id, c.parent_id, c.body, c.created_at, u.login AS author_login, u.avatar_url AS author_avatar_url
          FROM article_comments c
          JOIN articles a ON a.id = c.article_id
+         JOIN article_categories category ON category.slug = a.category
          JOIN github_users u ON u.github_id = c.github_id
-         WHERE a.slug = $1 AND a.status = 'published'
+         WHERE a.slug = $1 AND a.status = 'published' AND NOT category.is_hidden
          ORDER BY c.created_at ASC",
     )
     .bind(slug)
@@ -114,7 +115,8 @@ pub(crate) async fn create_comment(
         return Err(ApiError::BadRequest("评论应为 1-2000 个字符".into()));
     }
     let article_id = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM articles WHERE slug = $1 AND status = 'published'",
+        "SELECT a.id FROM articles a JOIN article_categories c ON c.slug = a.category
+         WHERE a.slug = $1 AND a.status = 'published' AND NOT c.is_hidden",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)

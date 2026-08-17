@@ -65,8 +65,10 @@ nav a:active { transform: scale(.98); }
 .footer-inner { display: flex; min-height: 150px; padding: 36px 0; align-items: flex-start; justify-content: space-between; gap: 30px; }
 .footer-inner strong { font-size: 14px; }
 .footer-inner p { max-width: 520px; margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.footer-nav { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.footer-friend { color: var(--ink); font-size: 14px; font-weight: 700; }
 .footer-links { display: flex; flex-wrap: wrap; gap: 18px; color: var(--muted); font-size: 12px; }
-.footer-links a:hover { color: var(--green); }
+.footer-friend:hover, .footer-links a:hover { color: var(--green); }
 
 .eyebrow { display: flex; margin: 0 0 10px; align-items: center; color: var(--accent); gap: 8px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .eyebrow::before { width: 22px; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent-secondary)); content: ''; }

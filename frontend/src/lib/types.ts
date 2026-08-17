@@ -4,6 +4,7 @@ export type Category = {
   slug: string;
   name: string;
   sort_order: number;
+  is_hidden: boolean;
 };
 
 export type Article = {

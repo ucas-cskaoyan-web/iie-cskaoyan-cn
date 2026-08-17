@@ -11,6 +11,8 @@ pub(crate) enum ApiError {
     Database(#[from] sqlx::Error),
     #[error("请求参数不合法: {0}")]
     BadRequest(String),
+    #[error("资源冲突: {0}")]
+    Conflict(String),
     #[error("未授权")]
     Unauthorized,
     #[error("需要登录")]
@@ -34,6 +36,7 @@ impl IntoResponse for ApiError {
                 )
             }
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
+            Self::Conflict(message) => (StatusCode::CONFLICT, message),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "管理凭据无效".to_string()),
             Self::AuthenticationRequired => {
                 (StatusCode::UNAUTHORIZED, "请先使用 GitHub 登录".to_string())

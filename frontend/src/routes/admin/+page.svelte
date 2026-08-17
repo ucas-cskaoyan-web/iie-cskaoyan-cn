@@ -10,6 +10,7 @@
     Database,
     ExternalLink,
     Eye,
+    EyeOff,
     FilePenLine,
     FileText,
     House,
@@ -34,11 +35,11 @@
 
   type AdminView = 'overview' | 'homepage' | 'review' | 'articles' | 'categories' | 'stats';
   type ArticleDraft = { slug: string; title: string; excerpt: string; body_markdown: string; category: ArticleCategory; year: string; status: 'draft' | 'published' | 'archived'; is_pinned: boolean; is_protected: boolean; access_password: string };
-  type CategoryDraft = { previous_slug: string | null; slug: string; name: string; sort_order: string };
+  type CategoryDraft = { previous_slug: string | null; slug: string; name: string; sort_order: string; is_hidden: boolean };
   type ReportDraft = { year: string; title: string; exam_applicants_min: string; applicants_note: string; national_total_cutoff: string; national_politics_english_cutoff: string; national_subject_cutoff: string; academic_cutoff: string; professional_cutoff: string; interviewed_total: string; admitted_total: string; academic_admitted: string; professional_admitted: string; recommendation_total: string; direct_phd: string; recommendation_academic: string; recommendation_professional: string; exam_source_sample: string; exam_source_coverage: string; score_formula: string; source_file: string; source_note: string };
 
   const blankArticle = (): ArticleDraft => ({ slug: '', title: '', excerpt: '', body_markdown: '', category: categories[0]?.slug ?? 'initial', year: String(new Date().getFullYear()), status: 'draft', is_pinned: false, is_protected: false, access_password: '' });
-  const blankCategory = (): CategoryDraft => ({ previous_slug: null, slug: '', name: '', sort_order: String((categories.length + 1) * 10) });
+  const blankCategory = (): CategoryDraft => ({ previous_slug: null, slug: '', name: '', sort_order: String((categories.length + 1) * 10), is_hidden: false });
   const blankReport = (): ReportDraft => ({ year: String(new Date().getFullYear()), title: '', exam_applicants_min: '', applicants_note: '', national_total_cutoff: '', national_politics_english_cutoff: '', national_subject_cutoff: '', academic_cutoff: '', professional_cutoff: '', interviewed_total: '', admitted_total: '', academic_admitted: '', professional_admitted: '', recommendation_total: '', direct_phd: '', recommendation_academic: '', recommendation_professional: '', exam_source_sample: '', exam_source_coverage: '', score_formula: '总成绩 = 初试总分 / 10 + 复试成绩 / 2', source_file: '', source_note: '学生整理，非官方统计' });
   const viewTitles: Record<AdminView, [string, string]> = {
     overview: ['工作台概览', '查看内容库状态与待处理事项。'],
@@ -60,7 +61,7 @@
   let reports = $state<AnnualReportOverview[]>([]);
   let categories = $state<Category[]>([]);
   let articleDraft = $state<ArticleDraft>(blankArticle());
-  let categoryDraft = $state<CategoryDraft>({ previous_slug: null, slug: '', name: '', sort_order: '10' });
+  let categoryDraft = $state<CategoryDraft>({ previous_slug: null, slug: '', name: '', sort_order: '10', is_hidden: false });
   let reportDraft = $state<ReportDraft>(blankReport());
   let editingArticleId = $state<string | null>(null);
   let selectedSubmission = $state<Submission | null>(null);
@@ -124,7 +125,7 @@
         fetch('/api/v1/admin/submissions', { headers }).then(parse),
         fetch('/api/v1/admin/articles', { headers }).then(parse),
         fetch('/api/v1/admin/reports', { headers }).then(parse),
-        fetch('/api/v1/categories').then(parse)
+        fetch('/api/v1/admin/categories', { headers }).then(parse)
       ]);
       submissions = reviewData;
       articles = articleData;
@@ -273,7 +274,7 @@
   }
 
   function editCategory(category: Category) {
-    categoryDraft = { previous_slug: category.slug, slug: category.slug, name: category.name, sort_order: String(category.sort_order) };
+    categoryDraft = { previous_slug: category.slug, slug: category.slug, name: category.name, sort_order: String(category.sort_order), is_hidden: category.is_hidden };
     drawer = 'category'; errorMessage = '';
   }
 
@@ -282,7 +283,7 @@
   async function saveCategory() {
     saving = true; errorMessage = '';
     try {
-      const payload = { slug: categoryDraft.slug, name: categoryDraft.name, sort_order: Number(categoryDraft.sort_order) };
+      const payload = { slug: categoryDraft.slug, name: categoryDraft.name, sort_order: Number(categoryDraft.sort_order), is_hidden: categoryDraft.is_hidden };
       const isEdit = Boolean(categoryDraft.previous_slug);
       const url = isEdit ? `/api/v1/admin/categories/${encodeURIComponent(categoryDraft.previous_slug!)}` : '/api/v1/admin/categories';
       const category = await fetch(url, { method: isEdit ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json', 'x-admin-token': token }, body: JSON.stringify(payload) }).then(parse) as Category;
@@ -295,6 +296,40 @@
       drawer = null;
       showNotice(isEdit ? '分类已更新，关联文章已同步修改。' : '分类已新增。');
     } catch (error) { errorMessage = error instanceof Error ? error.message : '分类保存失败'; }
+    finally { saving = false; }
+  }
+
+  async function deleteCategory(category: Category) {
+    if (!confirm(`确定删除分类“${category.name}”吗？有关联文章或投稿时将无法删除。`)) return;
+    saving = true; errorMessage = '';
+    try {
+      const response = await fetch(`/api/v1/admin/categories/${encodeURIComponent(category.slug)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': token }
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || '分类删除失败');
+      }
+      categories = categories.filter((item) => item.slug !== category.slug);
+      if (categoryDraft.previous_slug === category.slug) drawer = null;
+      showNotice('分类已删除。');
+    } catch (error) { errorMessage = error instanceof Error ? error.message : '分类删除失败'; }
+    finally { saving = false; }
+  }
+
+  async function toggleCategoryVisibility(category: Category) {
+    saving = true; errorMessage = '';
+    try {
+      const payload = { ...category, is_hidden: !category.is_hidden };
+      const updated = await fetch(`/api/v1/admin/categories/${encodeURIComponent(category.slug)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': token },
+        body: JSON.stringify(payload)
+      }).then(parse) as Category;
+      categories = categories.map((item) => item.slug === category.slug ? updated : item);
+      showNotice(updated.is_hidden ? '分类及其文章已从公开站点隐藏。' : '分类及其文章已恢复显示。');
+    } catch (error) { errorMessage = error instanceof Error ? error.message : '分类显示状态更新失败'; }
     finally { saving = false; }
   }
 
@@ -421,7 +456,7 @@
             <div class="table-scroll"><table><thead><tr><th>文章</th><th>置顶</th><th>分类</th><th>年份</th><th>更新时间</th><th>状态</th><th>操作</th></tr></thead><tbody>{#each filteredArticles as article}<tr><td><strong>{article.title}</strong><small>{article.slug}{article.is_protected ? ' · 已加密' : ''}</small></td><td>{#if article.is_pinned}<span class="pin-indicator"><Pin size={12} />置顶</span>{:else}—{/if}</td><td>{categoryLabel(article.category)}</td><td>{article.year ?? '未填写'}</td><td>{dateText(article.updated_at)}</td><td><select class="status-select {article.status}" value={article.status} disabled={saving} aria-label={`修改文章 ${article.title} 的状态`} onchange={(event) => updateArticleStatus(article, event)}><option value="draft">审核中</option><option value="archived">已隐藏</option><option value="published">已发布</option></select></td><td><div class="row-actions"><button class="row-action" disabled={saving} onclick={() => manageComments(article)} aria-label={`管理文章 ${article.title} 的评论`} title="管理评论"><MessageSquare size={16} /></button><button class="row-action" disabled={saving} onclick={() => editArticle(article)} aria-label={`编辑文章 ${article.title}`} title="编辑文章"><FilePenLine size={16} /></button><button class="row-action danger" disabled={saving} onclick={() => deleteArticle(article)} aria-label={`删除文章 ${article.title}`} title="删除文章"><Trash2 size={16} /></button></div></td></tr>{:else}<tr><td class="empty-cell" colspan="7">没有符合条件的文章</td></tr>{/each}</tbody></table></div><p class="result-count">当前显示 {filteredArticles.length} / {articles.length} 篇文章</p>
           </section>
         {:else if activeView === 'categories'}
-          <section class="panel management-panel"><div class="table-scroll"><table><thead><tr><th>分类名称</th><th>分类标识</th><th>排序</th><th>关联文章</th><th>操作</th></tr></thead><tbody>{#each categories as category}<tr><td><strong>{category.name}</strong></td><td><code>{category.slug}</code></td><td>{category.sort_order}</td><td>{articles.filter((item) => item.category === category.slug).length} 篇</td><td><button class="row-action" onclick={() => editCategory(category)} aria-label={`编辑分类 ${category.name}`} title="编辑分类"><FilePenLine size={16} /></button></td></tr>{:else}<tr><td class="empty-cell" colspan="5">还没有分类，请新增一个分类。</td></tr>{/each}</tbody></table></div><p class="result-count">修改分类标识会自动同步关联的文章与投稿。</p></section>
+          <section class="panel management-panel"><div class="table-scroll"><table><thead><tr><th>分类名称</th><th>分类标识</th><th>排序</th><th>状态</th><th>关联文章</th><th>操作</th></tr></thead><tbody>{#each categories as category}<tr><td><strong>{category.name}</strong></td><td><code>{category.slug}</code></td><td>{category.sort_order}</td><td><span class="status {category.is_hidden ? 'archived' : 'published'}">{category.is_hidden ? '已隐藏' : '显示中'}</span></td><td>{articles.filter((item) => item.category === category.slug).length} 篇</td><td><div class="row-actions"><button class="row-action" disabled={saving} onclick={() => toggleCategoryVisibility(category)} aria-label={`${category.is_hidden ? '显示' : '隐藏'}分类 ${category.name}`} title={category.is_hidden ? '恢复显示' : '隐藏分类'}>{#if category.is_hidden}<Eye size={16} />{:else}<EyeOff size={16} />{/if}</button><button class="row-action" disabled={saving} onclick={() => editCategory(category)} aria-label={`编辑分类 ${category.name}`} title="编辑分类"><FilePenLine size={16} /></button><button class="row-action danger" disabled={saving} onclick={() => deleteCategory(category)} aria-label={`删除分类 ${category.name}`} title="删除分类"><Trash2 size={16} /></button></div></td></tr>{:else}<tr><td class="empty-cell" colspan="6">还没有分类，请新增一个分类。</td></tr>{/each}</tbody></table></div><p class="result-count">隐藏分类会同时隐藏其公开文章；只有未被文章或投稿使用的分类可以删除。</p></section>
         {:else}
           <ReportDataManager {token} {reports} onEditReport={editReport} onNewReport={newReport} />
         {/if}
@@ -453,7 +488,7 @@
               {/if}
             </div>
           </div>
-        {:else if drawer === 'category'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveCategory(); }}><div class="drawer-body form-fields"><label class="full">分类名称<input bind:value={categoryDraft.name} required minlength="2" maxlength="30" /></label><label class="full">分类标识<input bind:value={categoryDraft.slug} required minlength="2" maxlength="60" pattern="[a-z0-9-]+" placeholder="study-plan" /></label><label>排序<input type="number" bind:value={categoryDraft.sort_order} required min="0" max="10000" /></label></div><div class="drawer-actions"><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving}><Save size={16} />{saving ? '保存中...' : '保存分类'}</button></div></form>
+        {:else if drawer === 'category'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveCategory(); }}><div class="drawer-body form-fields"><label class="full">分类名称<input bind:value={categoryDraft.name} required minlength="2" maxlength="30" /></label><label class="full">分类标识<input bind:value={categoryDraft.slug} required minlength="2" maxlength="60" pattern="[a-z0-9-]+" placeholder="study-plan" /></label><label>排序<input type="number" bind:value={categoryDraft.sort_order} required min="0" max="10000" /></label><label class="full pin-field"><input type="checkbox" bind:checked={categoryDraft.is_hidden} /><span>从公开站点隐藏该分类及其文章</span></label></div><div class="drawer-actions"><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving}><Save size={16} />{saving ? '保存中...' : '保存分类'}</button></div></form>
         {:else if drawer === 'report'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveReport(); }}><div class="drawer-body form-fields"><label>年份<input type="number" min="2010" max="2100" bind:value={reportDraft.year} required /></label><label>报告标题<input maxlength="160" bind:value={reportDraft.title} required /></label><label>统考报考下限<input type="number" min="0" bind:value={reportDraft.exam_applicants_min} /></label><label>进入复试<input type="number" min="0" bind:value={reportDraft.interviewed_total} /></label><label>统考录取<input type="number" min="0" bind:value={reportDraft.admitted_total} /></label><label>学硕录取<input type="number" min="0" bind:value={reportDraft.academic_admitted} /></label><label>专硕录取<input type="number" min="0" bind:value={reportDraft.professional_admitted} /></label><label>推免录取<input type="number" min="0" bind:value={reportDraft.recommendation_total} /></label><label>直博录取<input type="number" min="0" bind:value={reportDraft.direct_phd} /></label><label>推免学硕<input type="number" min="0" bind:value={reportDraft.recommendation_academic} /></label><label>推免专硕<input type="number" min="0" bind:value={reportDraft.recommendation_professional} /></label><label>考研生源样本<input type="number" min="0" bind:value={reportDraft.exam_source_sample} /></label><label>考研样本覆盖率<input type="number" min="0" max="100" step="0.01" bind:value={reportDraft.exam_source_coverage} /></label><label>国家线总分<input type="number" min="0" bind:value={reportDraft.national_total_cutoff} /></label><label>国家线政治/英语<input type="number" min="0" bind:value={reportDraft.national_politics_english_cutoff} /></label><label>国家线专业课<input type="number" min="0" bind:value={reportDraft.national_subject_cutoff} /></label><label>学硕复试线<input type="number" min="0" bind:value={reportDraft.academic_cutoff} /></label><label>专硕复试线<input type="number" min="0" bind:value={reportDraft.professional_cutoff} /></label><label class="full">报考人数口径<input bind:value={reportDraft.applicants_note} /></label><label class="full">总成绩计算方式<input bind:value={reportDraft.score_formula} /></label><label class="full">资料来源文件<input bind:value={reportDraft.source_file} required /></label><label class="full">来源说明<input bind:value={reportDraft.source_note} required /></label></div><div class="drawer-actions"><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving}><Save size={16} />{saving ? '保存中...' : '保存年度报告'}</button></div></form>
         {/if}
       </aside></div>

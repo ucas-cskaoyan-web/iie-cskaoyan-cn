@@ -22,12 +22,13 @@ pub(crate) async fn list_articles(
 ) -> Result<Json<Vec<Article>>, ApiError> {
     let limit = params.limit.unwrap_or(30).clamp(1, 100);
     let articles = sqlx::query_as::<_, Article>(
-        "SELECT id, slug, title, excerpt, CASE WHEN password_hash IS NULL THEN body_markdown ELSE '' END AS body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, created_at, updated_at, published_at
-         FROM articles
-         WHERE status = 'published'
-           AND ($1::text IS NULL OR category = $1)
-           AND ($2::text IS NULL OR title ILIKE '%' || $2 || '%' OR COALESCE(excerpt, '') ILIKE '%' || $2 || '%' OR (password_hash IS NULL AND body_markdown ILIKE '%' || $2 || '%'))
-         ORDER BY is_pinned DESC, COALESCE(published_at, updated_at) DESC LIMIT $3",
+        "SELECT a.id, a.slug, a.title, a.excerpt, CASE WHEN a.password_hash IS NULL THEN a.body_markdown ELSE '' END AS body_markdown, a.category, a.year, a.status, a.is_pinned, a.password_hash IS NOT NULL AS is_protected, a.created_at, a.updated_at, a.published_at
+         FROM articles a
+         JOIN article_categories c ON c.slug = a.category
+         WHERE a.status = 'published' AND NOT c.is_hidden
+           AND ($1::text IS NULL OR a.category = $1)
+           AND ($2::text IS NULL OR a.title ILIKE '%' || $2 || '%' OR COALESCE(a.excerpt, '') ILIKE '%' || $2 || '%' OR (a.password_hash IS NULL AND a.body_markdown ILIKE '%' || $2 || '%'))
+         ORDER BY a.is_pinned DESC, COALESCE(a.published_at, a.updated_at) DESC LIMIT $3",
     )
     .bind(params.category)
     .bind(params.q)
@@ -42,8 +43,9 @@ pub(crate) async fn get_article(
     Path(slug): Path<String>,
 ) -> Result<Json<Article>, ApiError> {
     let article = sqlx::query_as::<_, Article>(
-        "SELECT id, slug, title, excerpt, CASE WHEN password_hash IS NULL THEN body_markdown ELSE '' END AS body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, created_at, updated_at, published_at
-         FROM articles WHERE slug = $1 AND status = 'published'",
+        "SELECT a.id, a.slug, a.title, a.excerpt, CASE WHEN a.password_hash IS NULL THEN a.body_markdown ELSE '' END AS body_markdown, a.category, a.year, a.status, a.is_pinned, a.password_hash IS NOT NULL AS is_protected, a.created_at, a.updated_at, a.published_at
+         FROM articles a JOIN article_categories c ON c.slug = a.category
+         WHERE a.slug = $1 AND a.status = 'published' AND NOT c.is_hidden",
     )
     .bind(slug)
     .fetch_optional(&state.pool)
@@ -231,7 +233,8 @@ pub(crate) async fn unlock_article(
         return Err(ApiError::BadRequest("文章访问密码应为 6-128 个字符".into()));
     }
     let row = sqlx::query_as::<_, (Option<String>,)>(
-        "SELECT password_hash FROM articles WHERE slug = $1 AND status = 'published'",
+        "SELECT a.password_hash FROM articles a JOIN article_categories c ON c.slug = a.category
+         WHERE a.slug = $1 AND a.status = 'published' AND NOT c.is_hidden",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
@@ -243,8 +246,9 @@ pub(crate) async fn unlock_article(
         .verify_password(input.password.as_bytes(), &parsed)
         .map_err(|_| ApiError::AccessDenied)?;
     let article = sqlx::query_as::<_, Article>(
-        "SELECT id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, true AS is_protected, created_at, updated_at, published_at
-         FROM articles WHERE slug = $1 AND status = 'published'",
+        "SELECT a.id, a.slug, a.title, a.excerpt, a.body_markdown, a.category, a.year, a.status, a.is_pinned, true AS is_protected, a.created_at, a.updated_at, a.published_at
+         FROM articles a JOIN article_categories c ON c.slug = a.category
+         WHERE a.slug = $1 AND a.status = 'published' AND NOT c.is_hidden",
     )
     .bind(slug)
     .fetch_one(&state.pool)

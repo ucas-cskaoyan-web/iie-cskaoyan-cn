@@ -29,7 +29,7 @@ pub(crate) async fn create_submission(
         return Err(ApiError::BadRequest("正文长度应为 20-500000 个字符".into()));
     }
     let category_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM article_categories WHERE slug = $1)",
+        "SELECT EXISTS(SELECT 1 FROM article_categories WHERE slug = $1 AND NOT is_hidden)",
     )
     .bind(&input.category)
     .fetch_one(&state.pool)
