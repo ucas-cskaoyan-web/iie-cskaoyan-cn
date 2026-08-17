@@ -15,6 +15,7 @@ pub(crate) struct Article {
     pub(crate) status: String,
     pub(crate) is_pinned: bool,
     pub(crate) is_protected: bool,
+    pub(crate) contributor_id: Option<Uuid>,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
     pub(crate) published_at: Option<DateTime<Utc>>,
@@ -46,6 +47,10 @@ pub(crate) struct Submission {
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) reviewed_at: Option<DateTime<Utc>>,
     pub(crate) published_article_id: Option<Uuid>,
+    pub(crate) contributor_platform: Option<String>,
+    pub(crate) contributor_account: Option<String>,
+    pub(crate) contributor_nickname: Option<String>,
+    pub(crate) contributor_avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,6 +77,43 @@ pub(crate) struct ArticleCategoryInput {
     pub(crate) is_hidden: bool,
 }
 
+#[derive(Debug, Serialize, FromRow)]
+pub(crate) struct Contributor {
+    pub(crate) id: Uuid,
+    pub(crate) nickname: String,
+    pub(crate) platform: String,
+    pub(crate) account: String,
+    pub(crate) avatar_url: String,
+    pub(crate) sort_order: i32,
+    pub(crate) is_visible: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct PublicContributor {
+    pub(crate) id: Uuid,
+    pub(crate) nickname: String,
+    pub(crate) platform: String,
+    pub(crate) avatar_url: String,
+    pub(crate) profile_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ContributorInput {
+    pub(crate) nickname: String,
+    pub(crate) platform: String,
+    pub(crate) account: String,
+    pub(crate) avatar_url: Option<String>,
+    pub(crate) sort_order: i32,
+    #[serde(default = "default_true")]
+    pub(crate) is_visible: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct SubmissionInput {
     pub(crate) title: String,
@@ -82,6 +124,10 @@ pub(crate) struct SubmissionInput {
     pub(crate) body_markdown: String,
     pub(crate) consent: bool,
     pub(crate) website: Option<String>,
+    pub(crate) contributor_platform: Option<String>,
+    pub(crate) contributor_account: Option<String>,
+    pub(crate) contributor_nickname: Option<String>,
+    pub(crate) contributor_avatar_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +163,7 @@ pub(crate) struct ArticleInput {
     pub(crate) status: String,
     #[serde(default)]
     pub(crate) is_pinned: bool,
+    pub(crate) contributor_id: Option<Uuid>,
     #[serde(default)]
     pub(crate) access_password: Option<String>,
     #[serde(default)]

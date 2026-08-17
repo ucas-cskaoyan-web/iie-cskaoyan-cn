@@ -14,6 +14,7 @@
     FilePenLine,
     FileText,
     House,
+    ImagePlus,
     KeyRound,
     LayoutDashboard,
     LogOut,
@@ -28,24 +29,28 @@
     ShieldCheck,
     Trash2,
     Upload,
+    Users,
     X
   } from '@lucide/svelte';
   import ReportDataManager from '$lib/components/ReportDataManager.svelte';
-  import type { AnnualReportOverview, Article, ArticleCategory, ArticleComment, Category, Submission } from '$lib/types';
+  import type { AnnualReportOverview, Article, ArticleCategory, ArticleComment, Category, Contributor, ContributorPlatform, Submission } from '$lib/types';
 
-  type AdminView = 'overview' | 'homepage' | 'review' | 'articles' | 'categories' | 'stats';
-  type ArticleDraft = { slug: string; title: string; excerpt: string; body_markdown: string; category: ArticleCategory; year: string; status: 'draft' | 'published' | 'archived'; is_pinned: boolean; is_protected: boolean; access_password: string };
+  type AdminView = 'overview' | 'homepage' | 'review' | 'articles' | 'contributors' | 'categories' | 'stats';
+  type ArticleDraft = { slug: string; title: string; excerpt: string; body_markdown: string; category: ArticleCategory; year: string; status: 'draft' | 'published' | 'archived'; is_pinned: boolean; is_protected: boolean; access_password: string; contributor_id: string };
   type CategoryDraft = { previous_slug: string | null; slug: string; name: string; sort_order: string; is_hidden: boolean };
+  type ContributorDraft = { nickname: string; platform: ContributorPlatform; account: string; avatar_url: string; sort_order: string; is_visible: boolean };
   type ReportDraft = { year: string; title: string; exam_applicants_min: string; applicants_note: string; national_total_cutoff: string; national_politics_english_cutoff: string; national_subject_cutoff: string; academic_cutoff: string; professional_cutoff: string; interviewed_total: string; admitted_total: string; academic_admitted: string; professional_admitted: string; recommendation_total: string; direct_phd: string; recommendation_academic: string; recommendation_professional: string; exam_source_sample: string; exam_source_coverage: string; score_formula: string; source_file: string; source_note: string };
 
-  const blankArticle = (): ArticleDraft => ({ slug: '', title: '', excerpt: '', body_markdown: '', category: categories[0]?.slug ?? 'initial', year: String(new Date().getFullYear()), status: 'draft', is_pinned: false, is_protected: false, access_password: '' });
+  const blankArticle = (): ArticleDraft => ({ slug: '', title: '', excerpt: '', body_markdown: '', category: categories[0]?.slug ?? 'initial', year: String(new Date().getFullYear()), status: 'draft', is_pinned: false, is_protected: false, access_password: '', contributor_id: '' });
   const blankCategory = (): CategoryDraft => ({ previous_slug: null, slug: '', name: '', sort_order: String((categories.length + 1) * 10), is_hidden: false });
+  const blankContributor = (): ContributorDraft => ({ nickname: '', platform: 'github', account: '', avatar_url: '', sort_order: String(contributors.length * 10), is_visible: true });
   const blankReport = (): ReportDraft => ({ year: String(new Date().getFullYear()), title: '', exam_applicants_min: '', applicants_note: '', national_total_cutoff: '', national_politics_english_cutoff: '', national_subject_cutoff: '', academic_cutoff: '', professional_cutoff: '', interviewed_total: '', admitted_total: '', academic_admitted: '', professional_admitted: '', recommendation_total: '', direct_phd: '', recommendation_academic: '', recommendation_professional: '', exam_source_sample: '', exam_source_coverage: '', score_formula: '总成绩 = 初试总分 / 10 + 复试成绩 / 2', source_file: '', source_note: '学生整理，非官方统计' });
   const viewTitles: Record<AdminView, [string, string]> = {
     overview: ['工作台概览', '查看内容库状态与待处理事项。'],
     homepage: ['主页管理', '查看主页与历年数据的自动同步状态。所有内容均在招生数据中维护。'],
     review: ['稿件审核', '筛选投稿并完成审核与发布。'],
     articles: ['文章管理', '维护审核中、已隐藏和已发布的文章。'],
+    contributors: ['贡献者管理', '维护主页底部展示的贡献者、头像和排序。'],
     categories: ['分类管理', '新增或调整文章分类，修改标识会同步更新历史文章。'],
     stats: ['招生数据', '统一维护年度总览、生源院校、科目、分数段和科室数据。']
   };
@@ -60,14 +65,17 @@
   let articles = $state<Article[]>([]);
   let reports = $state<AnnualReportOverview[]>([]);
   let categories = $state<Category[]>([]);
+  let contributors = $state<Contributor[]>([]);
   let articleDraft = $state<ArticleDraft>(blankArticle());
   let categoryDraft = $state<CategoryDraft>({ previous_slug: null, slug: '', name: '', sort_order: '10', is_hidden: false });
+  let contributorDraft = $state<ContributorDraft>({ nickname: '', platform: 'github', account: '', avatar_url: '', sort_order: '0', is_visible: true });
   let reportDraft = $state<ReportDraft>(blankReport());
   let editingArticleId = $state<string | null>(null);
+  let editingContributorId = $state<string | null>(null);
   let selectedSubmission = $state<Submission | null>(null);
   let selectedCommentArticle = $state<Article | null>(null);
   let articleComments = $state<ArticleComment[]>([]);
-  let drawer = $state<'submission' | 'article' | 'comments' | 'category' | 'report' | null>(null);
+  let drawer = $state<'submission' | 'article' | 'comments' | 'category' | 'contributor' | 'report' | null>(null);
   let submissionSearch = $state('');
   let submissionFilter = $state<'all' | 'pending' | 'approved' | 'rejected'>('all');
   let articleSearch = $state('');
@@ -78,6 +86,7 @@
   let notice = $state('');
   let loading = $state(false);
   let saving = $state(false);
+  let uploadingAvatar = $state(false);
 
   if (typeof sessionStorage !== 'undefined') token = sessionStorage.getItem('iie-admin-token') ?? '';
 
@@ -86,6 +95,7 @@
   const reviewCount = $derived(articles.filter((item) => item.status === 'draft').length);
   const homepageYear = $derived(reports[0]?.year ?? null);
   const categoryLabel = (slug: string) => categories.find((item) => item.slug === slug)?.name ?? slug;
+  const platformLabels: Record<ContributorPlatform, string> = { qq: 'QQ', wechat: '微信', github: 'GitHub' };
   const filteredSubmissions = $derived(submissions.filter((item) => {
     const query = submissionSearch.trim().toLocaleLowerCase();
     const matchesSearch = !query || `${item.reference_code} ${item.title} ${item.contact ?? ''}`.toLocaleLowerCase().includes(query);
@@ -121,16 +131,18 @@
     errorMessage = ''; loading = true;
     try {
       const headers = { 'x-admin-token': token };
-      const [reviewData, articleData, reportData, categoryData] = await Promise.all([
+      const [reviewData, articleData, reportData, categoryData, contributorData] = await Promise.all([
         fetch('/api/v1/admin/submissions', { headers }).then(parse),
         fetch('/api/v1/admin/articles', { headers }).then(parse),
         fetch('/api/v1/admin/reports', { headers }).then(parse),
-        fetch('/api/v1/admin/categories', { headers }).then(parse)
+        fetch('/api/v1/admin/categories', { headers }).then(parse),
+        fetch('/api/v1/admin/contributors', { headers }).then(parse)
       ]);
       submissions = reviewData;
       articles = articleData;
       reports = reportData;
       categories = categoryData;
+      contributors = contributorData;
       authenticated = true;
       sessionStorage.setItem('iie-admin-token', token);
     } catch (error) {
@@ -161,7 +173,7 @@
 
   function editArticle(article: Article) {
     editingArticleId = article.id;
-    articleDraft = { slug: article.slug, title: article.title, excerpt: article.excerpt ?? '', body_markdown: article.body_markdown, category: article.category, year: article.year?.toString() ?? String(new Date().getFullYear()), status: article.status, is_pinned: article.is_pinned, is_protected: article.is_protected, access_password: '' };
+    articleDraft = { slug: article.slug, title: article.title, excerpt: article.excerpt ?? '', body_markdown: article.body_markdown, category: article.category, year: article.year?.toString() ?? String(new Date().getFullYear()), status: article.status, is_pinned: article.is_pinned, is_protected: article.is_protected, access_password: '', contributor_id: article.contributor_id ?? '' };
     drawer = 'article'; errorMessage = '';
   }
 
@@ -230,7 +242,7 @@
     saving = true; errorMessage = '';
     try {
       if (articleDraft.is_protected && !editingArticleId && !articleDraft.access_password) throw new Error('请为加密文章设置访问密码');
-      const payload = { ...articleDraft, year: numberOrNull(articleDraft.year), access_password: articleDraft.access_password || null, clear_access_password: !articleDraft.is_protected };
+      const payload = { ...articleDraft, year: numberOrNull(articleDraft.year), contributor_id: articleDraft.contributor_id || null, access_password: articleDraft.access_password || null, clear_access_password: !articleDraft.is_protected };
       const url = editingArticleId ? `/api/v1/admin/articles/${editingArticleId}` : '/api/v1/admin/articles';
       const method = editingArticleId ? 'PATCH' : 'POST';
       const article = await fetch(url, { method, headers: { 'content-type': 'application/json', 'x-admin-token': token }, body: JSON.stringify(payload) }).then(parse);
@@ -257,6 +269,7 @@
         year: article.year,
         status,
         is_pinned: article.is_pinned,
+        contributor_id: article.contributor_id,
         clear_access_password: false
       };
       const updated = await fetch(`/api/v1/admin/articles/${article.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json', 'x-admin-token': token }, body: JSON.stringify(payload) }).then(parse);
@@ -333,6 +346,95 @@
     finally { saving = false; }
   }
 
+  function newContributor() {
+    editingContributorId = null;
+    contributorDraft = blankContributor();
+    drawer = 'contributor';
+    errorMessage = '';
+  }
+
+  function editContributor(contributor: Contributor) {
+    editingContributorId = contributor.id;
+    contributorDraft = {
+      nickname: contributor.nickname,
+      platform: contributor.platform,
+      account: contributor.account,
+      avatar_url: contributor.avatar_url,
+      sort_order: String(contributor.sort_order),
+      is_visible: contributor.is_visible
+    };
+    drawer = 'contributor';
+    errorMessage = '';
+  }
+
+  function contributorAvatarPreview() {
+    if (contributorDraft.avatar_url.trim()) return contributorDraft.avatar_url.trim();
+    if (contributorDraft.platform === 'qq' && contributorDraft.account.trim()) return `https://q.qlogo.cn/headimg_dl?dst_uin=${contributorDraft.account.trim()}&spec=640&img_type=jpg`;
+    if (contributorDraft.platform === 'github' && contributorDraft.account.trim()) return `https://github.com/${contributorDraft.account.trim()}.png?size=160`;
+    return 'https://api.dicebear.com/9.x/initials/svg?seed=Contributor';
+  }
+
+  async function uploadContributorAvatar(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    uploadingAvatar = true;
+    errorMessage = '';
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      const receipt = await fetch('/api/v1/uploads', { method: 'POST', headers: { 'x-admin-token': token }, body: form }).then(parse);
+      contributorDraft.avatar_url = receipt.url;
+    } catch (error) { errorMessage = error instanceof Error ? error.message : '头像上传失败'; }
+    finally { uploadingAvatar = false; }
+  }
+
+  async function saveContributor() {
+    saving = true;
+    errorMessage = '';
+    try {
+      const payload = { ...contributorDraft, avatar_url: contributorDraft.avatar_url.trim() || null, sort_order: Number(contributorDraft.sort_order) };
+      const url = editingContributorId ? `/api/v1/admin/contributors/${editingContributorId}` : '/api/v1/admin/contributors';
+      const contributor = await fetch(url, { method: editingContributorId ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json', 'x-admin-token': token }, body: JSON.stringify(payload) }).then(parse) as Contributor;
+      contributors = editingContributorId
+        ? contributors.map((item) => item.id === contributor.id ? contributor : item)
+        : [...contributors, contributor];
+      contributors = contributors.sort((a, b) => a.sort_order - b.sort_order);
+      drawer = null;
+      showNotice(editingContributorId ? '贡献者信息已更新。' : '贡献者已添加。');
+    } catch (error) { errorMessage = error instanceof Error ? error.message : '贡献者保存失败'; }
+    finally { saving = false; }
+  }
+
+  async function toggleContributorVisibility(contributor: Contributor) {
+    saving = true;
+    errorMessage = '';
+    try {
+      const updated = await fetch(`/api/v1/admin/contributors/${contributor.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json', 'x-admin-token': token }, body: JSON.stringify({ ...contributor, is_visible: !contributor.is_visible }) }).then(parse) as Contributor;
+      contributors = contributors.map((item) => item.id === updated.id ? updated : item);
+      showNotice(updated.is_visible ? '贡献者已恢复显示。' : '贡献者已从主页隐藏。');
+    } catch (error) { errorMessage = error instanceof Error ? error.message : '贡献者显示状态更新失败'; }
+    finally { saving = false; }
+  }
+
+  async function deleteContributor(contributor: Contributor) {
+    if (!confirm(`确定删除贡献者“${contributor.nickname}”吗？`)) return;
+    saving = true;
+    errorMessage = '';
+    try {
+      const response = await fetch(`/api/v1/admin/contributors/${contributor.id}`, { method: 'DELETE', headers: { 'x-admin-token': token } });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || '贡献者删除失败');
+      }
+      contributors = contributors.filter((item) => item.id !== contributor.id);
+      if (editingContributorId === contributor.id) drawer = null;
+      showNotice('贡献者已删除。');
+    } catch (error) { errorMessage = error instanceof Error ? error.message : '贡献者删除失败'; }
+    finally { saving = false; }
+  }
+
   async function deleteArticle(article: Article) {
     if (!confirm(`确定永久删除文章“${article.title}”吗？删除后无法恢复。`)) return;
     saving = true; errorMessage = '';
@@ -403,6 +505,7 @@
            { id: 'homepage' as AdminView, label: '主页管理', icon: House },
           { id: 'review' as AdminView, label: '稿件审核', icon: FileText },
           { id: 'articles' as AdminView, label: '文章管理', icon: BookOpen },
+          { id: 'contributors' as AdminView, label: '贡献者管理', icon: Users },
           { id: 'categories' as AdminView, label: '分类管理', icon: Archive },
           { id: 'stats' as AdminView, label: '招生数据', icon: Database }
         ] as item}
@@ -414,7 +517,7 @@
     </aside>
 
       {#if mobileMenuOpen}
-       <div class="mobile-nav-layer"><button class="mobile-scrim" aria-label="关闭菜单" onclick={() => mobileMenuOpen = false}></button><aside class="sidebar mobile-sidebar"><div class="sidebar-brand"><span>IIE</span><div><strong>内容工作台</strong><small>内容管理</small></div><button onclick={() => mobileMenuOpen = false} aria-label="关闭侧边栏"><X size={18} /></button></div><nav aria-label="移动后台导航"><button class:active={activeView === 'overview'} onclick={() => changeView('overview')}><LayoutDashboard size={17} />概览</button><button class:active={activeView === 'homepage'} onclick={() => changeView('homepage')}><House size={17} />主页管理</button><button class:active={activeView === 'review'} onclick={() => changeView('review')}><FileText size={17} />稿件审核 <b>{pendingCount}</b></button><button class:active={activeView === 'articles'} onclick={() => changeView('articles')}><BookOpen size={17} />文章管理</button><button class:active={activeView === 'categories'} onclick={() => changeView('categories')}><Archive size={17} />分类管理</button><button class:active={activeView === 'stats'} onclick={() => changeView('stats')}><Database size={17} />招生数据</button></nav></aside></div>
+       <div class="mobile-nav-layer"><button class="mobile-scrim" aria-label="关闭菜单" onclick={() => mobileMenuOpen = false}></button><aside class="sidebar mobile-sidebar"><div class="sidebar-brand"><span>IIE</span><div><strong>内容工作台</strong><small>内容管理</small></div><button onclick={() => mobileMenuOpen = false} aria-label="关闭侧边栏"><X size={18} /></button></div><nav aria-label="移动后台导航"><button class:active={activeView === 'overview'} onclick={() => changeView('overview')}><LayoutDashboard size={17} />概览</button><button class:active={activeView === 'homepage'} onclick={() => changeView('homepage')}><House size={17} />主页管理</button><button class:active={activeView === 'review'} onclick={() => changeView('review')}><FileText size={17} />稿件审核 <b>{pendingCount}</b></button><button class:active={activeView === 'articles'} onclick={() => changeView('articles')}><BookOpen size={17} />文章管理</button><button class:active={activeView === 'contributors'} onclick={() => changeView('contributors')}><Users size={17} />贡献者管理</button><button class:active={activeView === 'categories'} onclick={() => changeView('categories')}><Archive size={17} />分类管理</button><button class:active={activeView === 'stats'} onclick={() => changeView('stats')}><Database size={17} />招生数据</button></nav></aside></div>
     {/if}
 
     <div class:wide={sidebarCollapsed} class="workspace">
@@ -424,7 +527,7 @@
       </header>
 
       <main class="admin-content">
-        <div class="view-heading"><div><h1>{viewTitles[activeView][0]}</h1><p>{viewTitles[activeView][1]}</p></div>{#if activeView === 'homepage'}<button class="primary-action" onclick={() => changeView('stats')}><Database size={16} />管理招生数据</button>{:else if activeView === 'articles'}<button class="primary-action" onclick={newArticle}><Plus size={16} />新建文章</button>{:else if activeView === 'categories'}<button class="primary-action" onclick={newCategory}><Plus size={16} />新增分类</button>{/if}</div>
+        <div class="view-heading"><div><h1>{viewTitles[activeView][0]}</h1><p>{viewTitles[activeView][1]}</p></div>{#if activeView === 'homepage'}<button class="primary-action" onclick={() => changeView('stats')}><Database size={16} />管理招生数据</button>{:else if activeView === 'articles'}<button class="primary-action" onclick={newArticle}><Plus size={16} />新建文章</button>{:else if activeView === 'contributors'}<button class="primary-action" onclick={newContributor}><Plus size={16} />新增贡献者</button>{:else if activeView === 'categories'}<button class="primary-action" onclick={newCategory}><Plus size={16} />新增分类</button>{/if}</div>
 
         {#if errorMessage}<div class="alert error">{errorMessage}<button onclick={() => errorMessage = ''} aria-label="关闭错误"><X size={15} /></button></div>{/if}
         {#if notice}<div class="alert success"><Check size={15} />{notice}</div>{/if}
@@ -439,7 +542,7 @@
 
           <div class="overview-grid">
             <section class="panel recent-panel"><div class="panel-head"><div><h2>最近投稿</h2><p>优先处理待审核内容</p></div><button onclick={() => changeView('review')}>查看全部 <ChevronRight size={15} /></button></div><div class="table-scroll"><table><thead><tr><th>稿件</th><th>分类</th><th>提交时间</th><th>状态</th><th></th></tr></thead><tbody>{#each submissions.slice(0, 6) as item}<tr><td><strong>{item.title}</strong><small>{item.reference_code}</small></td><td>{categoryLabel(item.category)}</td><td>{dateText(item.created_at)}</td><td><span class="status {item.status}">{statusLabels[item.status]}</span></td><td><button class="row-action" onclick={() => inspectSubmission(item)} aria-label="查看稿件"><Eye size={15} /></button></td></tr>{:else}<tr><td class="empty-cell" colspan="5">暂无投稿记录</td></tr>{/each}</tbody></table></div></section>
-            <section class="panel quick-panel"><div class="panel-head"><div><h2>快捷入口</h2><p>常用维护操作</p></div></div><button onclick={() => { changeView('review'); submissionFilter = 'pending'; }}><span class="quick-icon"><FileText size={18} /></span><div><strong>处理待审稿件</strong><small>{pendingCount} 篇内容等待处理</small></div><span class="quick-chevron"><ChevronRight size={17} /></span></button><button onclick={() => { changeView('articles'); newArticle(); }}><span class="quick-icon"><FilePenLine size={18} /></span><div><strong>撰写新文章</strong><small>创建草稿或直接发布</small></div><span class="quick-chevron"><ChevronRight size={17} /></span></button><button onclick={() => changeView('stats')}><span class="quick-icon"><Database size={18} /></span><div><strong>维护年度报告</strong><small>统一维护主页与历年完整数据</small></div><span class="quick-chevron"><ChevronRight size={17} /></span></button></section>
+             <section class="panel quick-panel"><div class="panel-head"><div><h2>快捷入口</h2><p>常用维护操作</p></div></div><button onclick={() => { changeView('review'); submissionFilter = 'pending'; }}><span class="quick-icon"><FileText size={18} /></span><div><strong>处理待审稿件</strong><small>{pendingCount} 篇内容等待处理</small></div><span class="quick-chevron"><ChevronRight size={17} /></span></button><button onclick={() => { changeView('articles'); newArticle(); }}><span class="quick-icon"><FilePenLine size={18} /></span><div><strong>撰写新文章</strong><small>创建草稿或直接发布</small></div><span class="quick-chevron"><ChevronRight size={17} /></span></button><button onclick={() => changeView('contributors')}><span class="quick-icon"><Users size={18} /></span><div><strong>管理贡献者</strong><small>{contributors.filter((item) => item.is_visible).length} 位贡献者正在主页展示</small></div><span class="quick-chevron"><ChevronRight size={17} /></span></button><button onclick={() => changeView('stats')}><span class="quick-icon"><Database size={18} /></span><div><strong>维护年度报告</strong><small>统一维护主页与历年完整数据</small></div><span class="quick-chevron"><ChevronRight size={17} /></span></button></section>
           </div>
         {:else if activeView === 'homepage'}
           <section class="panel management-panel"><div class="homepage-banner"><span class="metric-icon green"><House size={18} /></span><div><small>当前主页年度</small><strong>{homepageYear ?? '未配置'}</strong><p>主页自动选择招生数据中年份最高的年度报告。新增更高年份后无需在这里重复配置。</p></div><a class="primary-action" href="/" target="_blank" rel="noreferrer">查看主页 <ExternalLink size={15} /></a></div><div class="table-scroll"><table><thead><tr><th>年份</th><th>报告标题</th><th>统考录取</th><th>推免录取</th><th>数据源</th><th>同步状态</th></tr></thead><tbody>{#each reports as report}<tr class:emphasis={report.year === homepageYear}><td><strong>{report.year}</strong></td><td><strong>{report.title}</strong><small>{report.source_note}</small></td><td>{report.admitted_total ?? '未填'}</td><td>{report.recommendation_total ?? '未填'}</td><td class="source-cell">{report.source_file}</td><td>{#if report.year === homepageYear}<span class="status published">主页已同步</span>{:else}<span class="status archived">历史页已同步</span>{/if}</td></tr>{:else}<tr><td class="empty-cell" colspan="6">还没有年度报告，请前往招生数据新增。</td></tr>{/each}</tbody></table></div><p class="result-count">此页面只显示自动同步结果。所有数据统一在“招生数据”维护。</p></section>
@@ -455,6 +558,8 @@
             <div class="segmented"><button class:active={articleFilter === 'all'} onclick={() => articleFilter = 'all'}>全部 {articles.length}</button><button class:active={articleFilter === 'published'} onclick={() => articleFilter = 'published'}>已发布 {publishedCount}</button><button class:active={articleFilter === 'draft'} onclick={() => articleFilter = 'draft'}>审核中 {reviewCount}</button><button class:active={articleFilter === 'archived'} onclick={() => articleFilter = 'archived'}>已隐藏 {articles.filter((item) => item.status === 'archived').length}</button></div>
             <div class="table-scroll"><table><thead><tr><th>文章</th><th>置顶</th><th>分类</th><th>年份</th><th>更新时间</th><th>状态</th><th>操作</th></tr></thead><tbody>{#each filteredArticles as article}<tr><td><strong>{article.title}</strong><small>{article.slug}{article.is_protected ? ' · 已加密' : ''}</small></td><td>{#if article.is_pinned}<span class="pin-indicator"><Pin size={12} />置顶</span>{:else}—{/if}</td><td>{categoryLabel(article.category)}</td><td>{article.year ?? '未填写'}</td><td>{dateText(article.updated_at)}</td><td><select class="status-select {article.status}" value={article.status} disabled={saving} aria-label={`修改文章 ${article.title} 的状态`} onchange={(event) => updateArticleStatus(article, event)}><option value="draft">审核中</option><option value="archived">已隐藏</option><option value="published">已发布</option></select></td><td><div class="row-actions"><button class="row-action" disabled={saving} onclick={() => manageComments(article)} aria-label={`管理文章 ${article.title} 的评论`} title="管理评论"><MessageSquare size={16} /></button><button class="row-action" disabled={saving} onclick={() => editArticle(article)} aria-label={`编辑文章 ${article.title}`} title="编辑文章"><FilePenLine size={16} /></button><button class="row-action danger" disabled={saving} onclick={() => deleteArticle(article)} aria-label={`删除文章 ${article.title}`} title="删除文章"><Trash2 size={16} /></button></div></td></tr>{:else}<tr><td class="empty-cell" colspan="7">没有符合条件的文章</td></tr>{/each}</tbody></table></div><p class="result-count">当前显示 {filteredArticles.length} / {articles.length} 篇文章</p>
           </section>
+        {:else if activeView === 'contributors'}
+          <section class="panel management-panel"><div class="table-scroll"><table><thead><tr><th>贡献者</th><th>平台</th><th>账号</th><th>排序</th><th>状态</th><th>操作</th></tr></thead><tbody>{#each contributors as contributor}<tr><td><div class="contributor-cell"><img src={contributor.avatar_url} alt="" /><span><strong>{contributor.nickname}</strong><small>{contributor.updated_at ? `更新于 ${dateText(contributor.updated_at)}` : ''}</small></span></div></td><td>{platformLabels[contributor.platform]}</td><td class="truncate-cell">{contributor.account}</td><td>{contributor.sort_order}</td><td><span class="status {contributor.is_visible ? 'published' : 'archived'}">{contributor.is_visible ? '显示中' : '已隐藏'}</span></td><td><div class="row-actions"><button class="row-action" disabled={saving} onclick={() => toggleContributorVisibility(contributor)} aria-label={`${contributor.is_visible ? '隐藏' : '显示'}贡献者 ${contributor.nickname}`} title={contributor.is_visible ? '从主页隐藏' : '恢复显示'}>{#if contributor.is_visible}<EyeOff size={16} />{:else}<Eye size={16} />{/if}</button><button class="row-action" disabled={saving} onclick={() => editContributor(contributor)} aria-label={`编辑贡献者 ${contributor.nickname}`} title="编辑贡献者"><FilePenLine size={16} /></button><button class="row-action danger" disabled={saving} onclick={() => deleteContributor(contributor)} aria-label={`删除贡献者 ${contributor.nickname}`} title="删除贡献者"><Trash2 size={16} /></button></div></td></tr>{:else}<tr><td class="empty-cell" colspan="6">还没有贡献者，可以手动新增，也可以在投稿通过后自动加入。</td></tr>{/each}</tbody></table></div><p class="result-count">公开主页只显示昵称和头像，不会公开 QQ 号或微信号。</p></section>
         {:else if activeView === 'categories'}
           <section class="panel management-panel"><div class="table-scroll"><table><thead><tr><th>分类名称</th><th>分类标识</th><th>排序</th><th>状态</th><th>关联文章</th><th>操作</th></tr></thead><tbody>{#each categories as category}<tr><td><strong>{category.name}</strong></td><td><code>{category.slug}</code></td><td>{category.sort_order}</td><td><span class="status {category.is_hidden ? 'archived' : 'published'}">{category.is_hidden ? '已隐藏' : '显示中'}</span></td><td>{articles.filter((item) => item.category === category.slug).length} 篇</td><td><div class="row-actions"><button class="row-action" disabled={saving} onclick={() => toggleCategoryVisibility(category)} aria-label={`${category.is_hidden ? '显示' : '隐藏'}分类 ${category.name}`} title={category.is_hidden ? '恢复显示' : '隐藏分类'}>{#if category.is_hidden}<Eye size={16} />{:else}<EyeOff size={16} />{/if}</button><button class="row-action" disabled={saving} onclick={() => editCategory(category)} aria-label={`编辑分类 ${category.name}`} title="编辑分类"><FilePenLine size={16} /></button><button class="row-action danger" disabled={saving} onclick={() => deleteCategory(category)} aria-label={`删除分类 ${category.name}`} title="删除分类"><Trash2 size={16} /></button></div></td></tr>{:else}<tr><td class="empty-cell" colspan="6">还没有分类，请新增一个分类。</td></tr>{/each}</tbody></table></div><p class="result-count">隐藏分类会同时隐藏其公开文章；只有未被文章或投稿使用的分类可以删除。</p></section>
         {:else}
@@ -464,9 +569,9 @@
     </div>
 
     {#if drawer}
-      <div class="drawer-layer"><button class="drawer-scrim" aria-label="关闭详情" onclick={() => drawer = null}></button><aside class="drawer" aria-label="管理详情面板"><div class="drawer-head"><div><small>{drawer === 'submission' ? '稿件审核' : drawer === 'article' ? '文章编辑' : drawer === 'comments' ? '评论管理' : drawer === 'category' ? '分类编辑' : '年度报告'}</small><h2>{drawer === 'submission' ? '审核稿件' : drawer === 'article' ? (editingArticleId ? '编辑文章' : '新建文章') : drawer === 'comments' ? (selectedCommentArticle?.title ?? '文章评论') : drawer === 'category' ? (categoryDraft.previous_slug ? '编辑分类' : '新增分类') : '年度报告总览'}</h2></div><button onclick={() => drawer = null} aria-label="关闭"><X size={19} /></button></div>
-        {#if drawer === 'submission' && selectedSubmission}<div class="drawer-body"><div class="submission-title"><span class="status {selectedSubmission.status}">{statusLabels[selectedSubmission.status]}</span><h3>{selectedSubmission.title}</h3><p>{selectedSubmission.reference_code} · {categoryLabel(selectedSubmission.category)} · {selectedSubmission.year ?? '未标年份'}</p></div><dl class="submission-meta"><div><dt>投稿背景</dt><dd>{selectedSubmission.background || '未填写'}</dd></div><div><dt>联系信息</dt><dd>{selectedSubmission.contact || '未提供'}</dd></div><div><dt>提交时间</dt><dd>{new Date(selectedSubmission.created_at).toLocaleString('zh-CN')}</dd></div></dl><div class="markdown-preview"><span>Markdown 正文</span><pre>{selectedSubmission.body_markdown}</pre></div></div><div class="drawer-actions"><button class="secondary-button" disabled={saving} onclick={() => updateSubmission(selectedSubmission!.id, 'rejected')}><X size={16} />驳回</button>{#if selectedSubmission.status !== 'pending'}<button class="secondary-button" disabled={saving} onclick={() => updateSubmission(selectedSubmission!.id, 'pending')}><Archive size={16} />恢复待审</button>{/if}<button class="primary-action" disabled={saving} onclick={() => updateSubmission(selectedSubmission!.id, 'approved')}><Check size={16} />通过并发布</button></div>
-        {:else if drawer === 'article'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveArticle(); }}><div class="drawer-body form-fields"><label class="full">标题<input bind:value={articleDraft.title} required maxlength="120" /></label><label>文章网址（英文）<input bind:value={articleDraft.slug} required pattern="[a-z0-9-]+" placeholder="reexam-notes-2026" /></label><label>状态<select bind:value={articleDraft.status}><option value="draft">审核中</option><option value="archived">已隐藏</option><option value="published">已发布</option></select></label><label>分类<select bind:value={articleDraft.category} required>{#each categories as category}<option value={category.slug}>{category.name}</option>{/each}</select></label><label>相关年份<input type="number" min="2010" max="2100" bind:value={articleDraft.year} /></label><label class="pin-field"><input type="checkbox" bind:checked={articleDraft.is_pinned} /><span><Pin size={14} />在文章列表置顶</span></label><label class="full pin-field"><input type="checkbox" bind:checked={articleDraft.is_protected} /><span>启用访问密码</span></label>{#if articleDraft.is_protected}<label class="full">访问密码{#if editingArticleId}<small>留空则保持原密码</small>{/if}<input type="password" bind:value={articleDraft.access_password} minlength="6" maxlength="128" required={!editingArticleId} autocomplete="new-password" /></label>{/if}<label class="full">摘要<input maxlength="240" bind:value={articleDraft.excerpt} /></label><div class="full markdown-field"><label for="article-markdown-body">Markdown 正文</label><input class="file-input" id="admin-md-file" type="file" accept=".md,text/markdown" onchange={readArticleMarkdown} /><label class="upload-button" for="admin-md-file"><Upload size={15} />导入 .md</label><textarea id="article-markdown-body" bind:value={articleDraft.body_markdown} required minlength="20" maxlength="500000"></textarea></div></div><div class="drawer-actions">{#if editingArticleId}<button type="button" class="danger-button" disabled={saving} onclick={() => { const article = articles.find((item) => item.id === editingArticleId); if (article) deleteArticle(article); }}><Trash2 size={16} />删除文章</button>{/if}<span class="action-spacer"></span><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving}><Save size={16} />{saving ? '保存中...' : '保存修改'}</button></div></form>
+      <div class="drawer-layer"><button class="drawer-scrim" aria-label="关闭详情" onclick={() => drawer = null}></button><aside class="drawer" aria-label="管理详情面板"><div class="drawer-head"><div><small>{drawer === 'submission' ? '稿件审核' : drawer === 'article' ? '文章编辑' : drawer === 'comments' ? '评论管理' : drawer === 'category' ? '分类编辑' : drawer === 'contributor' ? '贡献者编辑' : '年度报告'}</small><h2>{drawer === 'submission' ? '审核稿件' : drawer === 'article' ? (editingArticleId ? '编辑文章' : '新建文章') : drawer === 'comments' ? (selectedCommentArticle?.title ?? '文章评论') : drawer === 'category' ? (categoryDraft.previous_slug ? '编辑分类' : '新增分类') : drawer === 'contributor' ? (editingContributorId ? '编辑贡献者' : '新增贡献者') : '年度报告总览'}</h2></div><button onclick={() => drawer = null} aria-label="关闭"><X size={19} /></button></div>
+        {#if drawer === 'submission' && selectedSubmission}<div class="drawer-body"><div class="submission-title"><span class="status {selectedSubmission.status}">{statusLabels[selectedSubmission.status]}</span><h3>{selectedSubmission.title}</h3><p>{selectedSubmission.reference_code} · {categoryLabel(selectedSubmission.category)} · {selectedSubmission.year ?? '未标年份'}</p></div><dl class="submission-meta"><div><dt>投稿背景</dt><dd>{selectedSubmission.background || '未填写'}</dd></div><div><dt>联系信息</dt><dd>{selectedSubmission.contact || '未提供'}</dd></div>{#if selectedSubmission.contributor_platform}<div><dt>贡献者署名</dt><dd>{selectedSubmission.contributor_nickname} · {platformLabels[selectedSubmission.contributor_platform]} · {selectedSubmission.contributor_account}</dd></div>{/if}<div><dt>提交时间</dt><dd>{new Date(selectedSubmission.created_at).toLocaleString('zh-CN')}</dd></div></dl><div class="markdown-preview"><span>Markdown 正文</span><pre>{selectedSubmission.body_markdown}</pre></div></div><div class="drawer-actions"><button class="secondary-button" disabled={saving} onclick={() => updateSubmission(selectedSubmission!.id, 'rejected')}><X size={16} />驳回</button>{#if selectedSubmission.status !== 'pending'}<button class="secondary-button" disabled={saving} onclick={() => updateSubmission(selectedSubmission!.id, 'pending')}><Archive size={16} />恢复待审</button>{/if}<button class="primary-action" disabled={saving} onclick={() => updateSubmission(selectedSubmission!.id, 'approved')}><Check size={16} />通过并发布</button></div>
+        {:else if drawer === 'article'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveArticle(); }}><div class="drawer-body form-fields"><label class="full">标题<input bind:value={articleDraft.title} required maxlength="120" /></label><label>文章网址（英文）<input bind:value={articleDraft.slug} required pattern="[a-z0-9-]+" placeholder="reexam-notes-2026" /></label><label>状态<select bind:value={articleDraft.status}><option value="draft">审核中</option><option value="archived">已隐藏</option><option value="published">已发布</option></select></label><label>分类<select bind:value={articleDraft.category} required>{#each categories as category}<option value={category.slug}>{category.name}</option>{/each}</select></label><label>相关年份<input type="number" min="2010" max="2100" bind:value={articleDraft.year} /></label><label>署名贡献者<select bind:value={articleDraft.contributor_id}><option value="">不显示投稿人</option>{#each contributors as contributor}<option value={contributor.id}>{contributor.nickname} · {platformLabels[contributor.platform]}</option>{/each}</select></label><label class="pin-field"><input type="checkbox" bind:checked={articleDraft.is_pinned} /><span><Pin size={14} />在文章列表置顶</span></label><label class="full pin-field"><input type="checkbox" bind:checked={articleDraft.is_protected} /><span>启用访问密码</span></label>{#if articleDraft.is_protected}<label class="full">访问密码{#if editingArticleId}<small>留空则保持原密码</small>{/if}<input type="password" bind:value={articleDraft.access_password} minlength="6" maxlength="128" required={!editingArticleId} autocomplete="new-password" /></label>{/if}<label class="full">摘要<input maxlength="240" bind:value={articleDraft.excerpt} /></label><div class="full markdown-field"><label for="article-markdown-body">Markdown 正文</label><input class="file-input" id="admin-md-file" type="file" accept=".md,text/markdown" onchange={readArticleMarkdown} /><label class="upload-button" for="admin-md-file"><Upload size={15} />导入 .md</label><textarea id="article-markdown-body" bind:value={articleDraft.body_markdown} required minlength="20" maxlength="500000"></textarea></div></div><div class="drawer-actions">{#if editingArticleId}<button type="button" class="danger-button" disabled={saving} onclick={() => { const article = articles.find((item) => item.id === editingArticleId); if (article) deleteArticle(article); }}><Trash2 size={16} />删除文章</button>{/if}<span class="action-spacer"></span><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving}><Save size={16} />{saving ? '保存中...' : '保存修改'}</button></div></form>
         {:else if drawer === 'comments' && selectedCommentArticle}
           <div class="comment-manager">
             <div class="comment-toolbar"><label><Search size={15} /><input bind:value={commentSearch} placeholder="搜索评论内容或 GitHub 用户" /></label><span>{articleComments.length} 条</span></div>
@@ -489,6 +594,7 @@
             </div>
           </div>
         {:else if drawer === 'category'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveCategory(); }}><div class="drawer-body form-fields"><label class="full">分类名称<input bind:value={categoryDraft.name} required minlength="2" maxlength="30" /></label><label class="full">分类标识<input bind:value={categoryDraft.slug} required minlength="2" maxlength="60" pattern="[a-z0-9-]+" placeholder="study-plan" /></label><label>排序<input type="number" bind:value={categoryDraft.sort_order} required min="0" max="10000" /></label><label class="full pin-field"><input type="checkbox" bind:checked={categoryDraft.is_hidden} /><span>从公开站点隐藏该分类及其文章</span></label></div><div class="drawer-actions"><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving}><Save size={16} />{saving ? '保存中...' : '保存分类'}</button></div></form>
+        {:else if drawer === 'contributor'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveContributor(); }}><div class="drawer-body form-fields"><div class="full contributor-preview"><span>{contributorDraft.nickname.slice(0, 1) || '?'}</span><img src={contributorAvatarPreview()} alt="头像预览" /><div><strong>{contributorDraft.nickname || '贡献者昵称'}</strong><small>{platformLabels[contributorDraft.platform]} · 首页展示预览</small></div></div><label class="full">展示昵称<input bind:value={contributorDraft.nickname} required minlength="1" maxlength="40" /></label><label>平台<select bind:value={contributorDraft.platform}><option value="qq">QQ</option><option value="wechat">微信</option><option value="github">GitHub</option></select></label><label>账号<input bind:value={contributorDraft.account} required maxlength="100" /></label><label>排序<input type="number" bind:value={contributorDraft.sort_order} required min="0" max="10000" /></label><label class="full">头像地址 <small>留空时 QQ/GitHub 自动生成，微信使用默认头像</small><input bind:value={contributorDraft.avatar_url} maxlength="2048" placeholder="https://... 或 /uploads/..." /></label><div class="full avatar-upload-row"><input class="file-input" id="contributor-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange={uploadContributorAvatar} disabled={uploadingAvatar} /><label class="secondary-button" for="contributor-avatar-file"><ImagePlus size={15} />{uploadingAvatar ? '上传中...' : '上传自定义头像'}</label>{#if contributorDraft.avatar_url}<button type="button" class="secondary-button" onclick={() => contributorDraft.avatar_url = ''}>使用自动头像</button>{/if}</div><label class="full pin-field"><input type="checkbox" bind:checked={contributorDraft.is_visible} /><span>在主页贡献者版块显示</span></label></div><div class="drawer-actions">{#if editingContributorId}<button type="button" class="danger-button" disabled={saving} onclick={() => { const contributor = contributors.find((item) => item.id === editingContributorId); if (contributor) deleteContributor(contributor); }}><Trash2 size={16} />删除贡献者</button>{/if}<span class="action-spacer"></span><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving || uploadingAvatar}><Save size={16} />{saving ? '保存中...' : '保存贡献者'}</button></div></form>
         {:else if drawer === 'report'}<form class="drawer-form" onsubmit={(event) => { event.preventDefault(); saveReport(); }}><div class="drawer-body form-fields"><label>年份<input type="number" min="2010" max="2100" bind:value={reportDraft.year} required /></label><label>报告标题<input maxlength="160" bind:value={reportDraft.title} required /></label><label>统考报考下限<input type="number" min="0" bind:value={reportDraft.exam_applicants_min} /></label><label>进入复试<input type="number" min="0" bind:value={reportDraft.interviewed_total} /></label><label>统考录取<input type="number" min="0" bind:value={reportDraft.admitted_total} /></label><label>学硕录取<input type="number" min="0" bind:value={reportDraft.academic_admitted} /></label><label>专硕录取<input type="number" min="0" bind:value={reportDraft.professional_admitted} /></label><label>推免录取<input type="number" min="0" bind:value={reportDraft.recommendation_total} /></label><label>直博录取<input type="number" min="0" bind:value={reportDraft.direct_phd} /></label><label>推免学硕<input type="number" min="0" bind:value={reportDraft.recommendation_academic} /></label><label>推免专硕<input type="number" min="0" bind:value={reportDraft.recommendation_professional} /></label><label>考研生源样本<input type="number" min="0" bind:value={reportDraft.exam_source_sample} /></label><label>考研样本覆盖率<input type="number" min="0" max="100" step="0.01" bind:value={reportDraft.exam_source_coverage} /></label><label>国家线总分<input type="number" min="0" bind:value={reportDraft.national_total_cutoff} /></label><label>国家线政治/英语<input type="number" min="0" bind:value={reportDraft.national_politics_english_cutoff} /></label><label>国家线专业课<input type="number" min="0" bind:value={reportDraft.national_subject_cutoff} /></label><label>学硕复试线<input type="number" min="0" bind:value={reportDraft.academic_cutoff} /></label><label>专硕复试线<input type="number" min="0" bind:value={reportDraft.professional_cutoff} /></label><label class="full">报考人数口径<input bind:value={reportDraft.applicants_note} /></label><label class="full">总成绩计算方式<input bind:value={reportDraft.score_formula} /></label><label class="full">资料来源文件<input bind:value={reportDraft.source_file} required /></label><label class="full">来源说明<input bind:value={reportDraft.source_note} required /></label></div><div class="drawer-actions"><button type="button" class="secondary-button" onclick={() => drawer = null}>取消</button><button class="primary-action" type="submit" disabled={saving}><Save size={16} />{saving ? '保存中...' : '保存年度报告'}</button></div></form>
         {/if}
       </aside></div>
@@ -612,6 +718,9 @@
   td small { max-width: 280px; margin-top: 5px; overflow: hidden; color: #9ba6ae; font-size: 9px; text-overflow: ellipsis; }
   .truncate-cell { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
   .source-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+  .contributor-cell { display: flex; min-width: 180px; align-items: center; gap: 10px; }
+  .contributor-cell img { width: 36px; height: 36px; flex: none; border: 1px solid #dce5ec; border-radius: 50%; object-fit: cover; }
+  .contributor-cell span { min-width: 0; }
   .status { display: inline-flex; min-height: 24px; padding: 3px 8px; align-items: center; border-radius: 12px; background: #edf1f3; color: #687985; font-size: 9px; font-weight: 850; }
   .status.pending, .status.draft { background: #fff2d9; color: #8b5d11; }
   .status.approved, .status.published { background: #e1f1eb; color: #176b53; }
@@ -684,6 +793,14 @@
   .form-fields input:focus, .form-fields select:focus, .form-fields textarea:focus { border-color: #176b53; box-shadow: 0 0 0 3px rgba(23,107,83,.1); }
   .form-fields input:disabled { cursor: not-allowed; background: #edf2f4; color: #75848e; }
   .form-fields textarea { min-height: 330px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; line-height: 1.7; }
+  .contributor-preview { display: flex; min-height: 76px; padding: 12px; align-items: center; border: 1px solid #dce5ec; border-radius: 8px; background: white; gap: 12px; }
+  .contributor-preview > span { display: grid; width: 48px; height: 48px; flex: none; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); font-weight: 850; }
+  .contributor-preview img { width: 48px; height: 48px; margin-left: -60px; flex: none; border-radius: 50%; object-fit: cover; }
+  .contributor-preview div { min-width: 0; margin-left: 0; }
+  .contributor-preview strong, .contributor-preview small { display: block; }
+  .contributor-preview strong { font-size: 13px; }
+  .contributor-preview small { margin-top: 5px; color: #8d9ba5; font-size: 9px; }
+  .avatar-upload-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .markdown-field { position: relative; }
   .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
   .upload-button { position: absolute; z-index: 1; top: -5px; right: 0; display: inline-flex; height: 30px; padding: 0 9px; align-items: center; border: 1px solid #d5e0e7; border-radius: 7px; background: white; color: #52636f; gap: 5px; font-size: 9px; cursor: pointer; }

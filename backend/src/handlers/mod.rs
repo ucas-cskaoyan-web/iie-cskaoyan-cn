@@ -1,6 +1,7 @@
 pub(crate) mod articles;
 pub(crate) mod categories;
 pub(crate) mod comments;
+pub(crate) mod contributors;
 pub(crate) mod github;
 pub(crate) mod reports;
 pub(crate) mod stats;

@@ -22,6 +22,10 @@ use crate::{
             update_category,
         },
         comments::{create_comment, delete_admin_comment, list_admin_comments, list_comments},
+        contributors::{
+            create_contributor, delete_contributor, get_qq_profile, list_admin_contributors,
+            list_contributors, update_contributor,
+        },
         github::{github_callback, github_me, start_github_login},
         reports::{
             delete_lab, delete_school, delete_school_tier, delete_score_band, delete_subject,
@@ -53,6 +57,8 @@ pub(crate) fn build(state: AppState) -> Router {
             get(list_comments).post(create_comment),
         )
         .route("/api/v1/categories", get(list_categories))
+        .route("/api/v1/contributors", get(list_contributors))
+        .route("/api/v1/qq-profile/{account}", get(get_qq_profile))
         .route("/api/v1/auth/github", get(start_github_login))
         .route("/api/v1/auth/github/callback", get(github_callback))
         .route("/api/v1/auth/github/me", get(github_me))
@@ -83,6 +89,14 @@ pub(crate) fn build(state: AppState) -> Router {
         .route(
             "/api/v1/admin/categories/{slug}",
             patch(update_category).delete(delete_category),
+        )
+        .route(
+            "/api/v1/admin/contributors",
+            get(list_admin_contributors).post(create_contributor),
+        )
+        .route(
+            "/api/v1/admin/contributors/{id}",
+            patch(update_contributor).delete(delete_contributor),
         )
         .route(
             "/api/v1/admin/stats",

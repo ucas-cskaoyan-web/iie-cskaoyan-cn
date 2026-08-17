@@ -13,6 +13,6 @@
   <main class="admin-root">{@render children()}</main>
 {:else}
   <Header />
-  <main class="page-shell">{@render children()}</main>
+  <main class="page-shell" class:home-page={page.url.pathname === '/'}>{@render children()}</main>
   <Footer />
 {/if}

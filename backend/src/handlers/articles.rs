@@ -22,7 +22,7 @@ pub(crate) async fn list_articles(
 ) -> Result<Json<Vec<Article>>, ApiError> {
     let limit = params.limit.unwrap_or(30).clamp(1, 100);
     let articles = sqlx::query_as::<_, Article>(
-        "SELECT a.id, a.slug, a.title, a.excerpt, CASE WHEN a.password_hash IS NULL THEN a.body_markdown ELSE '' END AS body_markdown, a.category, a.year, a.status, a.is_pinned, a.password_hash IS NOT NULL AS is_protected, a.created_at, a.updated_at, a.published_at
+        "SELECT a.id, a.slug, a.title, a.excerpt, CASE WHEN a.password_hash IS NULL THEN a.body_markdown ELSE '' END AS body_markdown, a.category, a.year, a.status, a.is_pinned, a.password_hash IS NOT NULL AS is_protected, a.contributor_id, a.created_at, a.updated_at, a.published_at
          FROM articles a
          JOIN article_categories c ON c.slug = a.category
          WHERE a.status = 'published' AND NOT c.is_hidden
@@ -43,7 +43,7 @@ pub(crate) async fn get_article(
     Path(slug): Path<String>,
 ) -> Result<Json<Article>, ApiError> {
     let article = sqlx::query_as::<_, Article>(
-        "SELECT a.id, a.slug, a.title, a.excerpt, CASE WHEN a.password_hash IS NULL THEN a.body_markdown ELSE '' END AS body_markdown, a.category, a.year, a.status, a.is_pinned, a.password_hash IS NOT NULL AS is_protected, a.created_at, a.updated_at, a.published_at
+        "SELECT a.id, a.slug, a.title, a.excerpt, CASE WHEN a.password_hash IS NULL THEN a.body_markdown ELSE '' END AS body_markdown, a.category, a.year, a.status, a.is_pinned, a.password_hash IS NOT NULL AS is_protected, a.contributor_id, a.created_at, a.updated_at, a.published_at
          FROM articles a JOIN article_categories c ON c.slug = a.category
          WHERE a.slug = $1 AND a.status = 'published' AND NOT c.is_hidden",
     )
@@ -118,7 +118,7 @@ pub(crate) async fn list_admin_articles(
 ) -> Result<Json<Vec<Article>>, ApiError> {
     authorized(&headers, &state)?;
     let articles = sqlx::query_as::<_, Article>(
-        "SELECT id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, created_at, updated_at, published_at
+        "SELECT id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, contributor_id, created_at, updated_at, published_at
          FROM articles ORDER BY is_pinned DESC, updated_at DESC LIMIT 200",
     )
     .fetch_all(&state.pool)
@@ -140,9 +140,9 @@ pub(crate) async fn create_article(
         .map(hash_password)
         .transpose()?;
     let article = sqlx::query_as::<_, Article>(
-        "INSERT INTO articles (id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash, published_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $8 = 'published' THEN now() ELSE NULL END)
-         RETURNING id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, created_at, updated_at, published_at",
+        "INSERT INTO articles (id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash, contributor_id, published_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CASE WHEN $8 = 'published' THEN now() ELSE NULL END)
+         RETURNING id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, contributor_id, created_at, updated_at, published_at",
     )
     .bind(Uuid::new_v4())
     .bind(input.slug.trim())
@@ -154,6 +154,7 @@ pub(crate) async fn create_article(
     .bind(input.status)
     .bind(input.is_pinned)
     .bind(password_hash)
+    .bind(input.contributor_id)
     .fetch_one(&state.pool)
     .await?;
     Ok((StatusCode::CREATED, Json(article)))
@@ -178,12 +179,12 @@ pub(crate) async fn update_article(
     let article = sqlx::query_as::<_, Article>(
         "UPDATE articles
          SET slug = $2, title = $3, excerpt = $4, body_markdown = $5, category = $6, year = $7,
-             status = $8, is_pinned = $9,
+             status = $8, is_pinned = $9, contributor_id = $12,
              password_hash = CASE WHEN $10 THEN NULL WHEN $11::text IS NOT NULL THEN $11 ELSE password_hash END,
              updated_at = now(),
              published_at = CASE WHEN $8 = 'published' THEN COALESCE(published_at, now()) ELSE published_at END
          WHERE id = $1
-         RETURNING id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, created_at, updated_at, published_at",
+         RETURNING id, slug, title, excerpt, body_markdown, category, year, status, is_pinned, password_hash IS NOT NULL AS is_protected, contributor_id, created_at, updated_at, published_at",
     )
     .bind(id)
     .bind(input.slug.trim())
@@ -196,6 +197,7 @@ pub(crate) async fn update_article(
     .bind(input.is_pinned)
     .bind(input.clear_access_password)
     .bind(password_hash)
+    .bind(input.contributor_id)
     .fetch_optional(&mut *transaction)
     .await?
     .ok_or(ApiError::NotFound)?;
@@ -246,7 +248,7 @@ pub(crate) async fn unlock_article(
         .verify_password(input.password.as_bytes(), &parsed)
         .map_err(|_| ApiError::AccessDenied)?;
     let article = sqlx::query_as::<_, Article>(
-        "SELECT a.id, a.slug, a.title, a.excerpt, a.body_markdown, a.category, a.year, a.status, a.is_pinned, true AS is_protected, a.created_at, a.updated_at, a.published_at
+        "SELECT a.id, a.slug, a.title, a.excerpt, a.body_markdown, a.category, a.year, a.status, a.is_pinned, true AS is_protected, a.contributor_id, a.created_at, a.updated_at, a.published_at
          FROM articles a JOIN article_categories c ON c.slug = a.category
          WHERE a.slug = $1 AND a.status = 'published' AND NOT c.is_hidden",
     )

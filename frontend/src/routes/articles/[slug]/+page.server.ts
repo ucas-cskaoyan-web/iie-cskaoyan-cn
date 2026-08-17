@@ -2,16 +2,17 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { apiRequest } from '$server/api';
 import { renderMarkdown } from '$server/markdown';
-import type { Article, ArticleComment, Category } from '$lib/types';
+import type { Article, ArticleComment, Category, PublicContributor } from '$lib/types';
 
 export const load: PageServerLoad = async ({ params }) => {
   try {
     const article = await apiRequest<Article>(`/api/v1/articles/${encodeURIComponent(params.slug)}`);
-    const [comments, categories] = await Promise.all([
+    const [comments, categories, contributors] = await Promise.all([
       apiRequest<ArticleComment[]>(`/api/v1/articles/${encodeURIComponent(params.slug)}/comments`).catch(() => []),
-      apiRequest<Category[]>('/api/v1/categories').catch(() => [])
+      apiRequest<Category[]>('/api/v1/categories').catch(() => []),
+      apiRequest<PublicContributor[]>('/api/v1/contributors').catch(() => [])
     ]);
-    return { article, html: renderMarkdown(article.body_markdown), comments, categories };
+    return { article, html: renderMarkdown(article.body_markdown), comments, categories, contributors };
   } catch {
     throw error(404, '文章不存在或尚未发布');
   }

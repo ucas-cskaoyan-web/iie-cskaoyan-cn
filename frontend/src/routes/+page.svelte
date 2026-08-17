@@ -2,9 +2,9 @@
   import { ArrowRight, BarChart3, BookOpen, CheckCircle2, FilePlus2, Pin, Search, ShieldCheck, Users } from '@lucide/svelte';
   import type { EChartsCoreOption as EChartsOption } from 'echarts/core';
   import DataChart from '$lib/components/DataChart.svelte';
-  import type { AnnualReportDetail, AnnualReportOverview, Article, Category, ScoreBandStat, SchoolTierStat } from '$lib/types';
+  import type { AnnualReportDetail, AnnualReportOverview, Article, Category, PublicContributor, ScoreBandStat, SchoolTierStat } from '$lib/types';
 
-  let { data }: { data: { report: AnnualReportDetail | null; reports: AnnualReportOverview[]; recent: Article[]; categories: Category[] } } = $props();
+  let { data }: { data: { report: AnnualReportDetail | null; reports: AnnualReportOverview[]; recent: Article[]; categories: Category[]; contributors: PublicContributor[] } } = $props();
   const report = $derived(data.report);
   const overview = $derived(report?.overview);
   const recommendationTiers = $derived(report?.school_tiers.filter((item) => item.track === 'recommendation') ?? []);
@@ -15,6 +15,11 @@
 
   const tierNames: Record<string, string> = { '985': '985（含国科大）', '211': '211（非 985）', non_211: '双非' };
   const categoryDescriptions: Record<string, string> = { initial: '科目节奏、资料选择和复盘方法。', reexam: '项目表达、专业问答和时间线。', career: '方向、城市、样本和统计口径。' };
+  const platformNames = { qq: 'QQ', wechat: '微信', github: 'GitHub' } as const;
+
+  function hideBrokenAvatar(event: Event) {
+    (event.currentTarget as HTMLImageElement).style.display = 'none';
+  }
 
   function pieOption(items: SchoolTierStat[]): EChartsOption {
     return {
@@ -134,6 +139,29 @@
   {/if}
 </section>
 
+<section class="section contributors-section">
+  <div class="section-head"><div><p class="eyebrow">共同维护</p><h2>项目贡献者</h2><p>感谢每一位帮助补充资料、修正内容和完善站点的朋友。</p></div><span class="contributors-mark"><Users size={22} /></span></div>
+  {#if data.contributors.length}
+    <div class="contributor-stack" aria-label="项目贡献者">
+      {#each data.contributors as contributor, index}
+        {#if contributor.profile_url}
+          <a class="contributor-avatar-item" style={`--stack-index: ${index}`} href={contributor.profile_url} target="_blank" rel="noreferrer" aria-label={`访问 ${contributor.nickname} 的 GitHub 主页`}>
+            <span class="contributor-avatar"><span>{contributor.nickname.slice(0, 1)}</span><img src={contributor.avatar_url} alt="" onerror={hideBrokenAvatar} /></span>
+            <span class="contributor-tooltip"><strong>{contributor.nickname}</strong><small>{platformNames[contributor.platform]} · 查看主页</small></span>
+          </a>
+        {:else}
+          <span class="contributor-avatar-item" style={`--stack-index: ${index}`} title={`${contributor.nickname} · ${platformNames[contributor.platform]}`}>
+            <span class="contributor-avatar"><span>{contributor.nickname.slice(0, 1)}</span><img src={contributor.avatar_url} alt="" onerror={hideBrokenAvatar} /></span>
+            <span class="contributor-tooltip"><strong>{contributor.nickname}</strong><small>{platformNames[contributor.platform]}</small></span>
+          </span>
+        {/if}
+      {/each}
+    </div>
+  {:else}
+    <div class="empty-state contributor-empty"><Users size={20} /><span>贡献者名单正在整理中。</span></div>
+  {/if}
+</section>
+
 <style>
   .home-hero { display: grid; min-height: 560px; padding: 84px 0; grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr); align-items: center; gap: clamp(42px, 7vw, 96px); }
   h1 { max-width: 690px; margin: 0; font-size: 54px; line-height: 1.12; }
@@ -191,9 +219,29 @@
   .article-row strong, .article-row small { display: block; } .article-row small { margin-top: 4px; color: var(--muted); font-size: 11px; }
   .text-link { display: inline-flex; align-items: center; color: var(--accent); gap: 5px; font-size: 13px; font-weight: 750; }
   .empty-state, .missing-report { display: flex; min-height: 190px; align-items: center; justify-content: center; flex-direction: column; color: var(--muted); gap: 8px; text-align: center; }
+  .contributors-section { padding: 38px 0 34px; }
+  .contributors-section .section-head { margin-bottom: 12px; align-items: center; }
+  .contributors-mark { color: var(--accent); }
+  .contributor-stack { display: flex; height: 108px; padding: 24px; align-items: center; justify-content: center; overflow: visible; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .45); }
+  .contributor-avatar-item { position: relative; z-index: calc(var(--stack-index) + 1); display: block; width: 52px; height: 52px; flex: none; margin-left: -27px; color: inherit; outline: none; transition: margin .28s ease; }
+  .contributor-avatar-item:first-child { margin-left: 0; }
+  .contributor-stack:hover .contributor-avatar-item, .contributor-stack:focus-within .contributor-avatar-item { margin-left: 9px; }
+  .contributor-stack:hover .contributor-avatar-item:first-child, .contributor-stack:focus-within .contributor-avatar-item:first-child { margin-left: 0; }
+  .contributor-avatar-item:hover, .contributor-avatar-item:focus-visible { z-index: 200; }
+  .contributor-avatar { position: relative; display: grid; width: 52px; height: 52px; place-items: center; overflow: hidden; border: 3px solid white; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); font-size: 15px; font-weight: 850; box-shadow: 0 4px 14px rgba(15, 23, 42, .15); transition: border-color .2s ease, box-shadow .2s ease; }
+  .contributor-avatar-item:hover .contributor-avatar, .contributor-avatar-item:focus-visible .contributor-avatar { border-color: var(--accent); box-shadow: 0 8px 22px rgba(var(--accent-rgb), .24); }
+  .contributor-avatar img { position: absolute; width: 100%; height: 100%; object-fit: cover; inset: 0; }
+  .contributor-tooltip { position: absolute; top: calc(100% + 10px); left: 50%; display: block; min-width: max-content; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #0f172a; color: white; box-shadow: var(--shadow); opacity: 0; pointer-events: none; text-align: center; transform: translate(-50%, -3px); transition: opacity .16s ease, transform .16s ease; }
+  .contributor-tooltip::before { position: absolute; bottom: 100%; left: 50%; width: 7px; height: 7px; background: #0f172a; content: ''; transform: translate(-50%, 4px) rotate(45deg); }
+  .contributor-tooltip strong, .contributor-tooltip small { display: block; white-space: nowrap; }
+  .contributor-tooltip strong { font-size: 11px; }
+  .contributor-tooltip small { margin-top: 3px; color: #cbd5e1; font-size: 9px; }
+  .contributor-avatar-item:hover .contributor-tooltip, .contributor-avatar-item:focus-visible .contributor-tooltip { opacity: 1; transform: translate(-50%, 0); }
+  .contributor-empty { min-height: 130px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .missing-report h1 { color: var(--ink); font-size: 28px; }
   .missing-report p { margin: 0; }
   @media (max-width: 900px) { .home-hero { padding: 64px 0; grid-template-columns: 1fr; gap: 36px; } .metric-strip { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 700px) { h1 { font-size: 38px; } .chart-grid, .school-preview, .workflow-grid, .year-overview { grid-template-columns: 1fr; } .article-row { grid-template-columns: 1fr auto; } .article-meta { grid-column: 1 / -1; } }
-  @media (max-width: 480px) { .home-hero { padding: 48px 0; } .metric-strip { grid-template-columns: 1fr; } .hero-actions .button { width: 100%; } .hero-ledger { min-width: 0; } }
+  @media (max-width: 480px) { .home-hero { padding: 48px 0; } .metric-strip { grid-template-columns: 1fr; } .hero-actions .button { width: 100%; } .hero-ledger { min-width: 0; } .contributors-section { padding: 28px 0 24px; } .contributor-stack { height: 96px; padding: 20px 18px; justify-content: flex-start; overflow-x: auto; overflow-y: hidden; } .contributor-avatar-item { margin-left: -16px; } .contributor-stack:hover .contributor-avatar-item, .contributor-stack:focus-within .contributor-avatar-item { margin-left: 5px; } .contributor-tooltip { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .contributor-avatar-item, .contributor-tooltip { transition: none; } }
 </style>

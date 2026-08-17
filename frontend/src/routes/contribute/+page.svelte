@@ -12,6 +12,10 @@
   let year = $state(String(new Date().getFullYear()));
   let background = $state('');
   let contact = $state('');
+  let contributorPlatform = $state<'' | 'qq' | 'wechat' | 'github'>('');
+  let contributorAccount = $state('');
+  let contributorNickname = $state('');
+  let qqLookupStatus = $state<'idle' | 'loading' | 'found' | 'missing'>('idle');
   let body = $state('');
   let consent = $state(false);
   let website = $state('');
@@ -23,6 +27,38 @@
   let uploadedFileName = $state('');
   let unresolvedImages = $derived(localImageReferences(body));
   let bodyEditor = $state<HTMLTextAreaElement | undefined>(undefined);
+  let qqLookupRequest = 0;
+  let lastAutoNickname = '';
+
+  $effect(() => {
+    const platform = contributorPlatform;
+    const account = contributorAccount.trim();
+    const request = ++qqLookupRequest;
+    if (platform !== 'qq' || !/^\d{5,12}$/.test(account)) {
+      qqLookupStatus = 'idle';
+      return;
+    }
+    qqLookupStatus = 'loading';
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/v1/qq-profile/${account}`);
+        const profile = await response.json().catch(() => null);
+        if (request !== qqLookupRequest) return;
+        if (!response.ok || !profile?.nickname) {
+          qqLookupStatus = 'missing';
+          return;
+        }
+        if (!contributorNickname.trim() || contributorNickname === lastAutoNickname) {
+          contributorNickname = profile.nickname;
+          lastAutoNickname = profile.nickname;
+        }
+        qqLookupStatus = 'found';
+      } catch {
+        if (request === qqLookupRequest) qqLookupStatus = 'missing';
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  });
 
   function frontMatter(source: string) {
     if (!source.startsWith('---')) return { content: source, values: {} as Record<string, unknown> };
@@ -176,11 +212,11 @@
     if (body.length > 500_000) { errorMessage = '正文不能超过 500000 个字符'; return; }
     submitting = true; result = ''; errorMessage = '';
     try {
-      const response = await fetch('/api/v1/submissions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, category: category || data.categories[0]?.slug, year: year ? Number(year) : null, background, contact, body_markdown: body, consent, website }) });
+      const response = await fetch('/api/v1/submissions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, category: category || data.categories[0]?.slug, year: year ? Number(year) : null, background, contact, body_markdown: body, consent, website, contributor_platform: contributorPlatform || null, contributor_account: contributorPlatform ? contributorAccount || null : null, contributor_nickname: contributorPlatform ? contributorNickname || null : null, contributor_avatar_url: null }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || '提交失败');
       result = `提交成功，编号为 ${payload.reference_code}。维护者审核后会根据你留下的联系方式沟通。`;
-      title = ''; year = String(new Date().getFullYear()); background = ''; contact = ''; body = ''; consent = false; uploadedFileName = ''; mode = 'edit';
+      title = ''; year = String(new Date().getFullYear()); background = ''; contact = ''; contributorPlatform = ''; contributorAccount = ''; contributorNickname = ''; body = ''; consent = false; uploadedFileName = ''; mode = 'edit';
     } catch (error) { errorMessage = error instanceof Error ? error.message : '提交失败，请稍后重试'; }
     finally { submitting = false; }
   }
@@ -202,6 +238,7 @@
         <div class="field"><label for="year">相关年份 <small>缺省为当前年</small></label><input class="input" id="year" type="number" min="2010" max="2100" bind:value={year} /></div>
         <div class="field"><label for="background">摘要 / 背景 <small>可选</small></label><input class="input" id="background" bind:value={background} maxlength="240" placeholder="会显示在文章列表中" /></div>
         <div class="field"><label for="contact">审核联系 <small>可选，不公开</small></label><input class="input" id="contact" bind:value={contact} maxlength="240" placeholder="邮箱或其他方式" /></div>
+        <div class="field full contributor-field"><label for="contributor-platform">贡献者署名 <small>可选，稿件通过审核后显示在主页底部</small></label><div class="contributor-inputs"><select class="select" id="contributor-platform" bind:value={contributorPlatform}><option value="">不参与贡献者展示</option><option value="qq">QQ</option><option value="wechat">微信</option><option value="github">GitHub</option></select><input class="input" bind:value={contributorAccount} maxlength="100" required={Boolean(contributorPlatform)} placeholder={contributorPlatform === 'github' ? 'GitHub 用户名' : contributorPlatform === 'qq' ? 'QQ 号' : contributorPlatform === 'wechat' ? '微信号' : '先选择平台'} disabled={!contributorPlatform} /><input class="input" bind:value={contributorNickname} maxlength="40" placeholder="展示昵称（建议填写）" disabled={!contributorPlatform} /></div><small class="field-help">QQ 和 GitHub 会自动使用对应头像；微信使用默认头像。主页不会公开你的账号。</small>{#if contributorPlatform === 'qq'}<span class="qq-lookup {qqLookupStatus}">{qqLookupStatus === 'loading' ? '正在从 QQ 空间读取昵称...' : qqLookupStatus === 'found' ? '已自动获取 QQ 昵称，可继续修改。' : qqLookupStatus === 'missing' ? '未能获取昵称，请手动填写。' : '输入完整 QQ 号后自动获取昵称。'}</span>{/if}</div>
         <div class="field full markdown-upload"><label for="markdown-file">Markdown 文件</label><div class="upload-row"><label class="button upload-button" for="markdown-file"><Upload size={16} />{uploading ? '处理中' : '导入 .md / .zip'}</label><input id="markdown-file" type="file" accept=".md,.zip,text/markdown,application/zip" onchange={readMarkdown} disabled={uploading} />{#if uploadedFileName}<span class="upload-name"><FileText size={15} />{uploadedFileName}</span>{:else}<span class="upload-help">ZIP 可包含 Markdown 引用的本地图片目录</span>{/if}</div></div>
         <div class="field full editor-field"><div class="editor-head"><label for="body">正文（Markdown）</label><div class="mode-tabs"><button type="button" class:active={mode === 'edit'} onclick={() => (mode = 'edit')}>编辑</button><button type="button" class:active={mode === 'preview'} onclick={() => (mode = 'preview')}>预览</button></div></div>{#if mode === 'edit'}<div class="toolbar"><button type="button" title="标题" onclick={() => insertAtCursor('## ', '', '小标题')}><Heading2 size={15} /></button><button type="button" title="粗体" onclick={() => insertAtCursor('**', '**')}><Bold size={15} /></button><button type="button" title="斜体" onclick={() => insertAtCursor('*', '*')}><Italic size={15} /></button><button type="button" title="引用" onclick={() => insertAtCursor('> ', '', '引用')}><Quote size={15} /></button><button type="button" title="代码" onclick={() => insertAtCursor('`', '`')}><Code2 size={15} /></button><button type="button" title="公式" onclick={() => insertAtCursor('\n$$\n', '\n$$\n', 'E = mc^2')}><Sigma size={15} /></button><button type="button" title="列表" onclick={() => insertAtCursor('- ', '', '列表项')}><List size={15} /></button><button type="button" title="链接" onclick={insertLink}><Link2 size={15} /></button><label class="toolbar-upload" title="上传图片" for="image-file"><ImagePlus size={15} />{uploading ? '上传中' : '图片'}</label><input id="image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange={uploadImage} disabled={uploading} /></div><textarea class="textarea editor" id="body" bind:this={bodyEditor} bind:value={body} required minlength="20" maxlength="500000" placeholder="从背景、时间线、具体做法、结果和不适用边界写起。"></textarea>{:else}<div class="preview prose" aria-live="polite">{@html renderMarkdown(body || '*暂无正文*')}</div>{/if}</div>
         {#if unresolvedImages.length}<div class="field full image-warning">有 {unresolvedImages.length} 个相对路径图片未上传：{unresolvedImages.slice(0, 3).join('、')}。提交后这些路径不会自动从本机迁移。</div>{/if}
@@ -216,6 +253,7 @@
 <style>
   .contribute-section { padding-top: 42px; } .contribute-grid { display: grid; grid-template-columns: minmax(230px, .58fr) minmax(0, 1.42fr); align-items: start; gap: 46px; } .contribute-aside { padding: 6px 0; } .aside-icon { display: grid; width: 44px; height: 44px; margin-bottom: 19px; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); } .contribute-aside h2 { margin: 0; font-size: 20px; } .contribute-aside p { margin: 12px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.75; } .limits { display: grid; margin-bottom: 22px; gap: 9px; } .limits span { display: flex; align-items: center; color: var(--accent-dark); gap: 7px; font-size: 11px; font-weight: 700; } .contribute-aside a { display: inline-flex; align-items: center; color: var(--accent); gap: 5px; font-size: 12px; font-weight: 750; }
   .form { padding: 28px; box-shadow: var(--shadow); } .form .success-box, .form .error-box { display: flex; margin-bottom: 18px; align-items: flex-start; gap: 8px; } .upload-row { display: flex; min-height: 42px; align-items: center; gap: 12px; } .upload-row input, .toolbar-upload + input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; } .upload-button { cursor: pointer; } .upload-name, .upload-help { display: inline-flex; min-width: 0; align-items: center; color: var(--muted); gap: 6px; font-size: 12px; } .upload-name { color: var(--accent-dark); font-weight: 700; overflow-wrap: anywhere; }
+  .contributor-inputs { display: grid; grid-template-columns: 150px 1fr 1fr; gap: 8px; } .field-help, .qq-lookup { display: block; margin-top: 7px; color: var(--muted); font-size: 10px; line-height: 1.5; } .qq-lookup { color: #7c8798; } .qq-lookup.loading { color: var(--accent); } .qq-lookup.found { color: var(--green-dark); } .qq-lookup.missing { color: #9d5b3d; }
   .editor-field { min-width: 0; } .editor-head { display: flex; align-items: center; justify-content: space-between; } .mode-tabs { display: flex; gap: 4px; } .mode-tabs button { min-height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--muted); cursor: pointer; font-size: 10px; font-weight: 750; } .mode-tabs button.active { border-color: var(--accent); background: var(--accent); color: white; } .toolbar { display: flex; margin-top: 9px; padding: 7px; align-items: center; border: 1px solid #cbd5e1; border-bottom: 0; border-radius: 8px 8px 0 0; background: var(--soft); gap: 3px; } .toolbar button, .toolbar-upload { display: inline-flex; width: 30px; height: 30px; padding: 0; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: transparent; color: #526174; cursor: pointer; gap: 4px; } .toolbar button:hover, .toolbar-upload:hover { background: white; color: var(--accent); } .toolbar-upload { width: auto; padding: 0 7px; font-size: 10px; font-weight: 750; } .editor { min-height: 430px; border-radius: 0 0 8px 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; line-height: 1.75; } .preview { min-height: 430px; max-width: none; margin-top: 9px; padding: 20px; border: 1px solid #cbd5e1; border-radius: 8px; overflow: auto; } .image-warning { padding: 10px 12px; border-left: 3px solid var(--amber); background: #fff8e9; color: #6b542d; font-size: 11px; line-height: 1.6; } .honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
-  @media (max-width: 760px) { .contribute-grid { grid-template-columns: 1fr; } } @media (max-width: 480px) { .upload-row { align-items: flex-start; flex-direction: column; gap: 8px; } .toolbar { overflow-x: auto; } }
+  @media (max-width: 760px) { .contribute-grid { grid-template-columns: 1fr; } .contributor-inputs { grid-template-columns: 1fr; } } @media (max-width: 480px) { .upload-row { align-items: flex-start; flex-direction: column; gap: 8px; } .toolbar { overflow-x: auto; } }
 </style>

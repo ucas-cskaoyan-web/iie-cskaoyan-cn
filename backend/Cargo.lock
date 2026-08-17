@@ -832,6 +832,7 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "encoding_rs",
  "rand_core 0.6.4",
  "reqwest",
  "serde",

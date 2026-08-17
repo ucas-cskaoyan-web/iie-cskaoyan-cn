@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import { ArrowLeft, CalendarDays, FileText, LockKeyhole, LogIn, MessageCircle, Reply, Send } from '@lucide/svelte';
   import { extractMarkdownHeadings, renderMarkdown } from '$lib/markdown';
-  import type { Article, ArticleComment, Category, GithubProfile } from '$lib/types';
+  import type { Article, ArticleComment, Category, GithubProfile, PublicContributor } from '$lib/types';
 
-  let { data }: { data: { article: Article; html: string; comments: ArticleComment[]; categories: Category[] } } = $props();
+  let { data }: { data: { article: Article; html: string; comments: ArticleComment[]; categories: Category[]; contributors: PublicContributor[] } } = $props();
   let unlockedArticle = $state<Article | null>(null);
   let unlockedHtml = $state<string | null>(null);
   let submittedComments = $state<ArticleComment[]>([]);
@@ -28,6 +28,8 @@
   const categoryLabel = $derived(data.categories.find((item) => item.slug === article.category)?.name ?? article.category);
   const articlePath = $derived(`/articles/${article.slug}`);
   const tocItems = $derived(extractMarkdownHeadings(article.body_markdown).filter((item) => item.text !== article.title));
+  const contributor = $derived(data.contributors.find((item) => item.id === article.contributor_id) ?? null);
+  const platformNames = { qq: 'QQ', wechat: '微信', github: 'GitHub' } as const;
 
   function updateActiveHeading() {
     if (!articleElement || tocItems.length === 0) return;
@@ -87,14 +89,26 @@
 <svelte:head><title>{article.title} | 信工所考研信息站</title><meta name="description" content={article.excerpt ?? article.title} /></svelte:head>
 
 <div class="article-page-grid">
-  <aside class="article-toc" aria-label="文章目录">
+  <aside class="article-sidebar">
+    {#if contributor}
+      <section class="article-contributor" aria-label="投稿人">
+        <span class="article-contributor-label">投稿人</span>
+        {#if contributor.profile_url}
+          <a class="article-author" href={contributor.profile_url} target="_blank" rel="noreferrer"><span class="article-author-avatar"><span>{contributor.nickname.slice(0, 1)}</span><img src={contributor.avatar_url} alt="" /></span><span class="article-author-copy"><strong>{contributor.nickname}</strong><em>{platformNames[contributor.platform]} · 查看主页</em></span></a>
+        {:else}
+          <div class="article-author"><span class="article-author-avatar"><span>{contributor.nickname.slice(0, 1)}</span><img src={contributor.avatar_url} alt="" /></span><span class="article-author-copy"><strong>{contributor.nickname}</strong><em>{platformNames[contributor.platform]}</em></span></div>
+        {/if}
+      </section>
+    {/if}
     {#if tocItems.length}
-      <strong>目录</strong>
-      <nav>
-        {#each tocItems as item}
-          <a class:active={activeHeadingId === item.id} class:subsection={item.level === 3} href={`#${item.id}`}>{item.text}</a>
-        {/each}
-      </nav>
+      <section class="article-toc" aria-label="文章目录">
+        <strong>目录</strong>
+        <nav>
+          {#each tocItems as item}
+            <a class:active={activeHeadingId === item.id} class:subsection={item.level === 3} href={`#${item.id}`}>{item.text}</a>
+          {/each}
+        </nav>
+      </section>
     {/if}
   </aside>
   <div class="article-layout">
@@ -141,7 +155,10 @@
 <style>
   .article-page-grid { display: grid; max-width: 1014px; margin: 0 auto; grid-template-columns: 230px minmax(0, 740px); align-items: start; gap: 44px; }
   .article-layout { width: 100%; max-width: 740px; padding: 37px 0 64px; }
-  .article-toc { position: sticky; top: 104px; max-height: calc(100vh - 128px); padding: 39px 0 24px; overflow-y: auto; }
+  .article-sidebar { position: sticky; top: 104px; max-height: calc(100vh - 128px); padding: 39px 0 24px; overflow-y: auto; }
+  .article-contributor { padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+  .article-contributor-label { display: block; margin-bottom: 12px; color: var(--muted); font-size: 10px; font-weight: 800; }
+  .article-contributor + .article-toc { margin-top: 32px; }
   .article-toc > strong { display: block; margin-bottom: 14px; color: var(--ink); font-size: 14px; }
   .article-toc nav { position: static; display: grid; align-items: stretch; border-left: 1px solid var(--line); gap: 0; }
   .article-toc a { position: relative; display: block; height: auto; padding: 9px 0 9px 16px; border-radius: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; line-height: 1.5; }
@@ -154,6 +171,14 @@
   .article-meta-line span:last-child { display: inline-flex; align-items: center; gap: 5px; }
   .prose { padding-bottom: 30px; }
   .prose .lead { margin-top: -18px; color: var(--muted); font-size: 16px; line-height: 1.75; }
+  .article-author { display: flex; width: 100%; align-items: center; color: inherit; gap: 11px; transition: color .2s ease, transform .2s ease; }
+  a.article-author:hover { color: var(--accent); transform: translateX(2px); }
+  .article-author-avatar { position: relative; display: grid; width: 44px; height: 44px; flex: none; place-items: center; overflow: hidden; border: 2px solid white; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); font-size: 12px; font-weight: 850; box-shadow: 0 3px 12px rgba(15, 23, 42, .12); }
+  .article-author-avatar img { position: absolute; width: 100%; height: 100%; object-fit: cover; inset: 0; }
+  .article-author-copy { display: grid; min-width: 0; gap: 4px; }
+  .article-author strong, .article-author em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .article-author strong { color: var(--ink); font-size: 13px; }
+  .article-author em { color: var(--muted); font-size: 9px; font-style: normal; }
   .article-note { display: flex; padding: 16px 18px; align-items: flex-start; color: var(--green); gap: 12px; }
   .article-note strong { color: var(--ink); font-size: 13px; }
   .article-note p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
@@ -163,6 +188,6 @@
   .comment-login, .comment-form { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafb; } .comment-login { display: flex; align-items: center; gap: 12px; } .comment-login :global(svg) { color: var(--green); } .comment-login div { flex: 1; } .comment-login strong, .comment-login p { display: block; } .comment-login strong { font-size: 13px; } .comment-login p { margin: 4px 0 0; color: var(--muted); font-size: 12px; } .comment-login .button { flex: none; }
   .comment-form { display: grid; gap: 10px; } .comment-user, .comment-author { display: flex; align-items: center; gap: 8px; font-size: 12px; } .comment-user img, .comment-author img, .comment-author > span { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; } .comment-author > span { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-dark); font-size: 10px; font-weight: 800; } .comment-form textarea { min-height: 92px; padding: 10px; resize: vertical; } .comment-form .button { justify-self: start; }
   .comment-list { display: grid; margin-top: 17px; gap: 0; border-top: 1px solid var(--line); } .comment { padding: 16px 2px; border-bottom: 1px solid var(--line); } .comment-author time { margin-left: auto; color: var(--muted); font-size: 11px; } .comment p { margin: 9px 0 0 32px; white-space: pre-wrap; color: var(--ink); font-size: 14px; line-height: 1.7; } .comment-empty { margin: 17px 0; color: var(--muted); font-size: 13px; } .reply-button { display: inline-flex; margin: 10px 0 0 32px; padding: 0; align-items: center; border: 0; background: transparent; color: var(--green); cursor: pointer; gap: 5px; font-size: 11px; font-weight: 750; } .comment-reply-form { display: grid; margin: 12px 0 4px 32px; gap: 8px; } .comment-reply-form textarea { min-height: 66px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; resize: vertical; font: inherit; } .comment-reply-form .button { justify-self: start; } .comment-reply { margin: 14px 0 0 32px; padding: 12px; border-left: 2px solid var(--line); background: #f8fafb; } .comment-reply p { margin-left: 0; }
-  @media (max-width: 1040px) { .article-page-grid { display: block; max-width: 740px; } .article-toc { display: none; } }
+  @media (max-width: 1040px) { .article-page-grid { display: block; max-width: 740px; } .article-sidebar { position: static; max-height: none; padding: 28px 0 0; overflow: visible; } .article-contributor { max-width: 260px; padding-bottom: 0; border-bottom: 0; } .article-toc { display: none; } .article-layout { padding-top: 26px; } }
   @media (max-width: 580px) { .article-meta-line { flex-wrap: wrap; } .comment-login { align-items: flex-start; flex-wrap: wrap; } .comment-login .button { width: 100%; } .comment-author time { font-size: 10px; } }
 </style>

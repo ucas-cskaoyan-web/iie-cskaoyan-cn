@@ -7,6 +7,28 @@ export type Category = {
   is_hidden: boolean;
 };
 
+export type ContributorPlatform = 'qq' | 'wechat' | 'github';
+
+export type PublicContributor = {
+  id: string;
+  nickname: string;
+  platform: ContributorPlatform;
+  avatar_url: string;
+  profile_url: string | null;
+};
+
+export type Contributor = {
+  id: string;
+  nickname: string;
+  platform: ContributorPlatform;
+  account: string;
+  avatar_url: string;
+  sort_order: number;
+  is_visible: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Article = {
   id: string;
   slug: string;
@@ -18,6 +40,7 @@ export type Article = {
   status: 'draft' | 'published' | 'archived';
   is_pinned: boolean;
   is_protected: boolean;
+  contributor_id: string | null;
   created_at: string;
   updated_at: string;
   published_at: string | null;
@@ -61,6 +84,10 @@ export type Submission = {
   created_at: string;
   reviewed_at: string | null;
   published_article_id: string | null;
+  contributor_platform: ContributorPlatform | null;
+  contributor_account: string | null;
+  contributor_nickname: string | null;
+  contributor_avatar_url: string | null;
 };
 
 export type ApiResponse<T> = { data: T } | { error: string };
