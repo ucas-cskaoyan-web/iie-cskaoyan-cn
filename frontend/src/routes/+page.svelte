@@ -222,7 +222,7 @@
   .contributors-section { padding: 38px 0 34px; }
   .contributors-section .section-head { margin-bottom: 12px; align-items: center; }
   .contributors-mark { color: var(--accent); }
-  .contributor-stack { display: flex; height: 108px; padding: 24px; align-items: center; justify-content: center; overflow: visible; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .45); }
+  .contributor-stack { display: flex; min-height: 108px; padding: 24px; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; overflow: visible; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .45); row-gap: 14px; }
   .contributor-avatar-item { position: relative; z-index: calc(var(--stack-index) + 1); display: block; width: 52px; height: 52px; flex: none; margin-left: -27px; color: inherit; outline: none; transition: margin .28s ease; }
   .contributor-avatar-item:first-child { margin-left: 0; }
   .contributor-stack:hover .contributor-avatar-item, .contributor-stack:focus-within .contributor-avatar-item { margin-left: 9px; }
@@ -242,6 +242,6 @@
   .missing-report p { margin: 0; }
   @media (max-width: 900px) { .home-hero { padding: 64px 0; grid-template-columns: 1fr; gap: 36px; } .metric-strip { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 700px) { h1 { font-size: 38px; } .chart-grid, .school-preview, .workflow-grid, .year-overview { grid-template-columns: 1fr; } .article-row { grid-template-columns: 1fr auto; } .article-meta { grid-column: 1 / -1; } }
-  @media (max-width: 480px) { .home-hero { padding: 48px 0; } .metric-strip { grid-template-columns: 1fr; } .hero-actions .button { width: 100%; } .hero-ledger { min-width: 0; } .contributors-section { padding: 28px 0 24px; } .contributor-stack { height: 96px; padding: 20px 18px; justify-content: flex-start; overflow-x: auto; overflow-y: hidden; } .contributor-avatar-item { margin-left: -16px; } .contributor-stack:hover .contributor-avatar-item, .contributor-stack:focus-within .contributor-avatar-item { margin-left: 5px; } .contributor-tooltip { display: none; } }
+  @media (max-width: 480px) { .home-hero { padding: 48px 0; } .metric-strip { grid-template-columns: 1fr; } .hero-actions .button { width: 100%; } .hero-ledger { min-width: 0; } .contributors-section { padding: 28px 0 24px; } .contributor-stack { min-height: 96px; padding: 20px 18px; justify-content: flex-start; overflow: hidden; row-gap: 10px; } .contributor-avatar-item { margin-left: -16px; } .contributor-stack:hover .contributor-avatar-item, .contributor-stack:focus-within .contributor-avatar-item { margin-left: 5px; } .contributor-tooltip { display: none; } }
   @media (prefers-reduced-motion: reduce) { .contributor-avatar-item, .contributor-tooltip { transition: none; } }
 </style>
