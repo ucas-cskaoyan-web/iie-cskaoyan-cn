@@ -7,8 +7,7 @@ use axum::{
     Router,
 };
 use tower_http::{
-    cors::CorsLayer, limit::RequestBodyLimitLayer, services::ServeDir, timeout::TimeoutLayer,
-    trace::TraceLayer,
+    limit::RequestBodyLimitLayer, services::ServeDir, timeout::TimeoutLayer, trace::TraceLayer,
 };
 
 use crate::{
@@ -135,6 +134,5 @@ pub(crate) fn build(state: AppState) -> Router {
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(10),
         ))
-        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
 }

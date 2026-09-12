@@ -7,6 +7,23 @@ marked.use(markedKatex({ throwOnError: false, output: 'htmlAndMathml' }));
 
 export type MarkdownHeading = { id: string; text: string; level: 2 | 3 };
 
+function normalizeTyporaListIndentation(source: string): string {
+  let fenced = false;
+  return source.split('\n').map((line) => {
+    if (/^\s*(`{3,}|~{3,})/.test(line)) {
+      fenced = !fenced;
+      return line;
+    }
+    if (fenced) return line;
+    const match = line.match(/^( +)(?=(?:[*+-]|\d+[.)])\s+)/);
+    if (!match) return line;
+    const width = match[1].length;
+    if (width < 3) return `${' '.repeat(Math.ceil(width / 2) * 3)}${line.slice(width)}`;
+    if (width % 2 === 0) return `${' '.repeat((width / 2) * 3)}${line.slice(width)}`;
+    return line;
+  }).join('\n');
+}
+
 export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
   let headingIndex = 0;
   return marked.lexer(source).flatMap((token) => {
@@ -34,7 +51,7 @@ export function renderMarkdown(source: string): string {
   const markdown = new Marked();
   markdown.setOptions({ gfm: true, breaks: true, renderer });
   markdown.use(markedKatex({ throwOnError: false, output: 'htmlAndMathml' }));
-  const html = markdown.parse(source) as string;
+  const html = markdown.parse(normalizeTyporaListIndentation(source)) as string;
   return sanitizeHtml(html, {
     allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1', 'h2', 'h3', 'h4', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', ...mathTags]),
     allowedAttributes: {
@@ -44,6 +61,8 @@ export function renderMarkdown(source: string): string {
       h2: ['id'],
       h3: ['id'],
       h4: ['id'],
+      ol: ['start', 'reversed', 'type'],
+      li: ['value'],
       img: ['src', 'alt', 'title', 'width', 'height', 'loading'],
       span: ['class', 'style', 'aria-hidden'],
       math: ['xmlns', 'display'],

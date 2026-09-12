@@ -8,7 +8,8 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': apiTarget,
-        '/uploads': apiTarget
+        '/uploads': apiTarget,
+        '/__article-tools': 'http://127.0.0.1:3100'
       }
     }
   };

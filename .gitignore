@@ -6,6 +6,8 @@ __pycache__/
 frontend/node_modules/
 frontend/.svelte-kit/
 frontend/build/
+tools/ucas-course-sign-in/node_modules/
+tools/ucas-course-sign-in/.next/
 backend/target*/
 backend/uploads/
 

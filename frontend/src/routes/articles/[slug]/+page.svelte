@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { ArrowLeft, CalendarDays, FileText, LockKeyhole, LogIn, MessageCircle, Reply, Send } from '@lucide/svelte';
   import { extractMarkdownHeadings, renderMarkdown } from '$lib/markdown';
+  import CourseSigninTool from '$lib/components/CourseSigninTool.svelte';
   import type { Article, ArticleComment, Category, GithubProfile, PublicContributor } from '$lib/types';
 
   let { data }: { data: { article: Article; html: string; comments: ArticleComment[]; categories: Category[]; contributors: PublicContributor[] } } = $props();
@@ -29,6 +30,7 @@
   const articlePath = $derived(`/articles/${article.slug}`);
   const tocItems = $derived(extractMarkdownHeadings(article.body_markdown).filter((item) => item.text !== article.title));
   const contributor = $derived(data.contributors.find((item) => item.id === article.contributor_id) ?? null);
+  const isCourseSigninArticle = $derived(article.slug === 'ucas-course-sign-in');
   const platformNames = { qq: 'QQ', wechat: '微信', github: 'GitHub' } as const;
 
   function updateActiveHeading() {
@@ -125,6 +127,11 @@
         <button class="button" type="submit" disabled={unlocking}>{unlocking ? '正在验证' : '查看文章'}</button>
       </form>
     {:else}
+      {#if isCourseSigninArticle}
+        <section class="article-tool-embed" aria-label="UCAS 课程查询与签到工具">
+          <CourseSigninTool />
+        </section>
+      {/if}
       {@html html}
     {/if}
   </article>
@@ -182,6 +189,7 @@
   .article-note { display: flex; padding: 16px 18px; align-items: flex-start; color: var(--green); gap: 12px; }
   .article-note strong { color: var(--ink); font-size: 13px; }
   .article-note p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+  .article-tool-embed { margin: 28px 0 10px; }
   .unlock-box { display: grid; margin-top: 28px; padding: 22px; grid-template-columns: auto 1fr; border: 1px solid var(--line); border-radius: 8px; background: #f7faf8; color: var(--green); gap: 10px 13px; }
   .unlock-box strong { color: var(--ink); font-size: 15px; } .unlock-box p { margin: 4px 0 0; color: var(--muted); font-size: 12px; } .unlock-box label { display: grid; grid-column: 1 / -1; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 700; } .unlock-box input, .comment-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); font: inherit; outline: 0; } .unlock-box input { height: 40px; padding: 0 10px; } .unlock-box input:focus, .comment-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .12); } .unlock-box .button { justify-self: start; } .unlock-error, .comment-error { margin: 0; color: #a73931 !important; font-size: 12px !important; }
   .comments { margin-top: 38px; padding-top: 25px; border-top: 1px solid var(--line); } .comments-head { display: flex; align-items: end; justify-content: space-between; } .comments-head h2 { display: flex; margin: 3px 0 0; align-items: center; font-size: 20px; gap: 8px; } .comments-head > span { color: var(--muted); font-size: 12px; }

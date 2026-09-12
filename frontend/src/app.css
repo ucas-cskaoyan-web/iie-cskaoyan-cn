@@ -125,6 +125,8 @@ tbody tr:hover { background: #f8faff; }
 .prose h3 { font-size: 18px; }
 .prose h2[id], .prose h3[id] { scroll-margin-top: 104px; }
 .prose p, .prose ul, .prose ol { margin: 0 0 1.1em; }
+.prose li > p { margin-bottom: .35em; }
+.prose li > ul, .prose li > ol { margin: .45em 0 .65em; }
 .prose a { color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
 .prose blockquote { margin: 1.4em 0; padding: 12px 18px; border-left: 3px solid var(--amber); background: #fff8e9; color: #62553c; }
 .prose code { padding: 2px 5px; border-radius: 3px; background: var(--soft); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
