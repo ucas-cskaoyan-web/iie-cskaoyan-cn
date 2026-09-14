@@ -20,9 +20,11 @@
   const signBase = 'https://iclass.ucas.edu.cn:8181/app/course/stu_scan_sign.action';
   const signBuffer = 3000;
   const qrTtl = 5000;
+  const usernameStorageKey = 'ucas-course-signin-username';
 
   let username = '';
   let password = 'Ucas@2025';
+  let hasRememberedUsername = false;
   let date = new Date().toISOString().slice(0, 10);
   let keyword = '';
   let manualIdentifier = '';
@@ -64,6 +66,21 @@
 
   function api(path: string) {
     return `${apiPrefix}${path}`;
+  }
+
+  function rememberUsername() {
+    try {
+      localStorage.setItem(usernameStorageKey, username.trim());
+      hasRememberedUsername = true;
+    } catch {}
+  }
+
+  function clearRememberedUsername() {
+    try {
+      localStorage.removeItem(usernameStorageKey);
+    } catch {}
+    username = '';
+    hasRememberedUsername = false;
   }
 
   function formatRange(start: string, end: string) {
@@ -131,6 +148,7 @@
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || '查询失败，请重试');
+      rememberUsername();
       courses = payload.courses ?? [];
       setStatus('success', `已查询到 ${payload.total ?? courses.length} 门课程（${payload.date ?? date}）`);
     } catch (error) {
@@ -212,6 +230,13 @@
   }
 
   onMount(() => {
+    try {
+      const rememberedUsername = localStorage.getItem(usernameStorageKey)?.trim();
+      if (rememberedUsername) {
+        username = rememberedUsername;
+        hasRememberedUsername = true;
+      }
+    } catch {}
     void getServerOffset();
     countdownTimer = setInterval(updateCountdown, 250);
   });
@@ -230,7 +255,13 @@
 
   {#if mode === 'query'}
     <form class="course-tool-form" onsubmit={queryCourses}>
-      <label>学号<input bind:value={username} required autocomplete="username" placeholder="输入学号" /></label>
+      <div class="course-tool-field">
+        <div class="field-title"><label for="ucas-course-username">学号</label><span>本机自动记忆</span></div>
+        <div class="username-entry">
+          <input id="ucas-course-username" bind:value={username} required autocomplete="username" placeholder="输入学号" />
+          {#if hasRememberedUsername}<button type="button" onclick={clearRememberedUsername} aria-label="清除已记住的学号">清除</button>{/if}
+        </div>
+      </div>
       <label>密码<input bind:value={password} required type="password" autocomplete="current-password" placeholder="输入密码" /></label>
       <label>日期<input bind:value={date} required type="date" /></label>
       <button class="primary" type="submit" disabled={loading}>{loading ? '查询中…' : '查询课程'}</button>
@@ -273,8 +304,14 @@
   .course-tool-tabs button.active, .course-tool-tabs button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
   .course-tool-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 12px; }
   .course-tool-form.manual { grid-template-columns: minmax(0, 1fr) auto; }
-  .course-tool-form label { display: grid; color: var(--ink); font-size: 12px; font-weight: 700; gap: 6px; }
+  .course-tool-form > label, .course-tool-field { display: grid; color: var(--ink); font-size: 12px; font-weight: 700; gap: 6px; }
   .course-tool-form input, .course-tool-list-head input { min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: inherit; }
+  .field-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .field-title span { color: var(--muted); font-size: 10px; font-weight: 500; }
+  .username-entry { position: relative; }
+  .username-entry input { width: 100%; padding-right: 48px; }
+  .username-entry button { position: absolute; top: 50%; right: 5px; padding: 5px 7px; transform: translateY(-50%); border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 10px; }
+  .username-entry button:hover { background: var(--accent-soft); color: var(--accent-dark); }
   .course-tool button.primary { min-height: 40px; padding: 0 15px; border: 0; border-radius: 7px; background: var(--accent); color: white; cursor: pointer; font: inherit; font-weight: 750; }
   .course-tool button:disabled { cursor: wait; opacity: .6; }
   .tool-status { min-height: 22px; margin: 12px 0; color: var(--muted); font-size: 12px; }
