@@ -22,7 +22,7 @@
   const qrTtl = 5000;
 
   let username = '';
-  let password = '';
+  let password = 'Ucas@2025';
   let date = new Date().toISOString().slice(0, 10);
   let keyword = '';
   let manualIdentifier = '';
