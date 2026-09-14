@@ -21,6 +21,7 @@
   let posting = $state(false);
   let articleElement = $state<HTMLElement | null>(null);
   let activeHeadingId = $state('');
+  let attemptedStoredPasswordSlug = '';
   const article = $derived(unlockedArticle?.slug === data.article.slug ? unlockedArticle : data.article);
   const html = $derived(unlockedArticle?.slug === data.article.slug && unlockedHtml !== null ? unlockedHtml : data.html);
   const comments = $derived([...data.comments, ...(submittedCommentsSlug === data.article.slug ? submittedComments : [])]);
@@ -32,6 +33,29 @@
   const contributor = $derived(data.contributors.find((item) => item.id === article.contributor_id) ?? null);
   const isCourseSigninArticle = $derived(article.slug === 'ucas-course-sign-in');
   const platformNames = { qq: 'QQ', wechat: '微信', github: 'GitHub' } as const;
+
+  function articlePasswordStorageKey(slug: string) {
+    return `article-access-password:${slug}`;
+  }
+
+  function forgetArticlePassword(slug: string) {
+    try {
+      localStorage.removeItem(articlePasswordStorageKey(slug));
+    } catch {}
+  }
+
+  $effect(() => {
+    const slug = data.article.slug;
+    if (!data.article.is_protected || data.article.body_markdown || attemptedStoredPasswordSlug === slug) return;
+    attemptedStoredPasswordSlug = slug;
+    try {
+      const rememberedPassword = localStorage.getItem(articlePasswordStorageKey(slug));
+      if (rememberedPassword) {
+        password = rememberedPassword;
+        void unlock(rememberedPassword, true);
+      }
+    } catch {}
+  });
 
   function updateActiveHeading() {
     if (!articleElement || tocItems.length === 0) return;
@@ -52,18 +76,30 @@
     return () => window.removeEventListener('scroll', updateActiveHeading);
   });
 
-  async function unlock() {
+  async function unlock(candidatePassword = password, automatic = false) {
+    const slug = article.slug;
     unlocking = true; unlockError = '';
     try {
-      const response = await fetch(`/api/v1/articles/${encodeURIComponent(article.slug)}/unlock`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password })
+      const response = await fetch(`/api/v1/articles/${encodeURIComponent(slug)}/unlock`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: candidatePassword })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || '无法解锁文章');
+      try {
+        localStorage.setItem(articlePasswordStorageKey(slug), candidatePassword);
+      } catch {}
       unlockedArticle = payload;
       unlockedHtml = renderMarkdown(payload.body_markdown);
       password = '';
-    } catch (error) { unlockError = error instanceof Error ? error.message : '无法解锁文章'; }
+    } catch (error) {
+      if (automatic) {
+        forgetArticlePassword(slug);
+        password = '';
+        unlockError = '已记住的密码失效，请重新输入';
+      } else {
+        unlockError = error instanceof Error ? error.message : '无法解锁文章';
+      }
+    }
     finally { unlocking = false; }
   }
 
@@ -121,7 +157,7 @@
     {#if article.excerpt}<p class="lead">{article.excerpt}</p>{/if}
     {#if article.is_protected && !article.body_markdown}
       <form class="unlock-box" onsubmit={(event) => { event.preventDefault(); unlock(); }}>
-        <LockKeyhole size={20} /><div><strong>这篇文章需要访问密码</strong><p>输入文章发布者提供的密码后查看正文。</p></div>
+        <LockKeyhole size={20} /><div><strong>这篇文章需要访问密码</strong><p>首次验证成功后，该浏览器会自动记住密码。</p></div>
         <label><span>访问密码</span><input type="password" bind:value={password} required minlength="6" maxlength="128" autocomplete="current-password" /></label>
         {#if unlockError}<p class="unlock-error">{unlockError}</p>{/if}
         <button class="button" type="submit" disabled={unlocking}>{unlocking ? '正在验证' : '查看文章'}</button>
