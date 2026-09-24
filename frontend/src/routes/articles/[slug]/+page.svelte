@@ -31,7 +31,16 @@
   const articlePath = $derived(`/articles/${article.slug}`);
   const tocItems = $derived(extractMarkdownHeadings(article.body_markdown).filter((item) => item.text !== article.title));
   const contributor = $derived(data.contributors.find((item) => item.id === article.contributor_id) ?? null);
-  const isCourseSigninArticle = $derived(article.slug === 'ucas-course-sign-in');
+  const courseToolBlocks = $derived.by(() => {
+    if (article.slug !== 'course' && article.slug !== 'ucas-course-sign-in') return null;
+    const lines = article.body_markdown.split(/\r?\n/);
+    const markerIndex = lines.findIndex((line) => line.trim() === '[[ucas-course-tool]]');
+    if (markerIndex < 0) return null;
+    return {
+      before: renderMarkdown(lines.slice(0, markerIndex).join('\n')),
+      after: renderMarkdown(lines.slice(markerIndex + 1).join('\n'))
+    };
+  });
   const platformNames = { qq: 'QQ', wechat: '微信', github: 'GitHub' } as const;
 
   function articlePasswordStorageKey(slug: string) {
@@ -163,12 +172,15 @@
         <button class="button" type="submit" disabled={unlocking}>{unlocking ? '正在验证' : '查看文章'}</button>
       </form>
     {:else}
-      {#if isCourseSigninArticle}
+      {#if courseToolBlocks}
+        {@html courseToolBlocks.before}
         <section class="article-tool-embed" aria-label="UCAS 课程查询与签到工具">
           <CourseSigninTool />
         </section>
+        {@html courseToolBlocks.after}
+      {:else}
+        {@html html}
       {/if}
-      {@html html}
     {/if}
   </article>
   <aside class="article-note surface"><FileText size={18} /><div><strong>资料边界</strong><p>本文为公开资料整理或个人经验，涉及年份、数据与政策时请以当年官方文件为准。</p></div></aside>
