@@ -266,7 +266,6 @@
   {#if qrDataUrl}
     <section class="qr-panel" aria-label="签到码">
       <div><img src={qrDataUrl} alt="签到二维码" /><p>二维码剩余 {countdown} 秒</p></div>
-      <div class="qr-actions"><button type="button" onclick={downloadQr}>下载二维码</button><button type="button" onclick={copySignUrl}>复制签到链接</button></div>
       <p class:success={actionKind === 'success'} class:error={actionKind === 'error'} class="tool-status">{actionText}</p>
     </section>
   {/if}
