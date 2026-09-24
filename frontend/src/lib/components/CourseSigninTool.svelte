@@ -40,11 +40,10 @@
   let offsetFetchedAt = 0;
   let statusText = '输入学号、密码和日期，开始查询课程';
   let statusKind: StatusKind = 'idle';
-  let actionText = '生成签到码后，可在此查看下载、复制和点击签到的状态信息';
+  let actionText = '生成签到码后，可在此查看二维码下载和链接复制状态';
   let actionKind: StatusKind = 'idle';
   let loading = false;
   let manualLoading = false;
-  let directSigning = false;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let countdownTimer: ReturnType<typeof setInterval> | undefined;
   let filteredCourses: Course[] = [];
@@ -182,30 +181,6 @@
     }
   }
 
-  async function directSign() {
-    if (!selectedCourse || !username.trim() || !password) {
-      setAction('error', '请先在查询课程模式输入学号、密码并选择课程');
-      return;
-    }
-    directSigning = true;
-    setAction('loading', '正在发起签到…');
-    try {
-      const timestamp = Number(new URL(signUrl).searchParams.get('timestamp')) || Date.now() + offset - signBuffer;
-      const response = await fetch(api('/api/course-uuid/sign'), {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password, courseSchedId: selectedCourse.id, timestamp })
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.success) throw new Error(payload.message || '签到失败，请稍后重试');
-      setAction('success', `${payload.message || '签到成功'}，课程状态已刷新`);
-      selectedCourse = { ...selectedCourse, signStatus: '1' };
-    } catch (error) {
-      setAction('error', error instanceof Error ? error.message : '网络异常，签到请求未完成');
-    } finally {
-      directSigning = false;
-    }
-  }
-
   async function downloadQr() {
     if (!source) return;
     const deadline = Date.now() + offset + 10000;
@@ -291,7 +266,7 @@
   {#if qrDataUrl}
     <section class="qr-panel" aria-label="签到码">
       <div><img src={qrDataUrl} alt="签到二维码" /><p>二维码剩余 {countdown} 秒</p></div>
-      <div class="qr-actions"><button type="button" onclick={downloadQr}>下载二维码</button><button type="button" onclick={copySignUrl}>复制签到链接</button>{#if selectedCourse}<button class="primary" type="button" onclick={directSign} disabled={directSigning}>{directSigning ? '签到中…' : '直接签到'}</button>{/if}</div>
+      <div class="qr-actions"><button type="button" onclick={downloadQr}>下载二维码</button><button type="button" onclick={copySignUrl}>复制签到链接</button></div>
       <p class:success={actionKind === 'success'} class:error={actionKind === 'error'} class="tool-status">{actionText}</p>
     </section>
   {/if}
